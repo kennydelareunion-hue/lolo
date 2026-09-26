@@ -20,10 +20,12 @@ import com.termux.devcenter.ui.terminal.TerminalScreen
 import com.termux.devcenter.ui.build.BuildScreen
 import com.termux.devcenter.ui.sessions.SessionsScreen
 import com.termux.devcenter.ui.settings.SettingsScreen
+import com.termux.devcenter.ui.omniroute.OmniRouteScreen
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Home)
-    object OpenCode : Screen("opencode", "OpenCode", Icons.Default.Code)
+    object Dashboard : Screen("dashboard", "Accueil", Icons.Default.Home)
+    object OpenCode : Screen("opencode", "Chat IA", Icons.Default.Chat)
+    object OmniRoute : Screen("omniroute", "OmniRoute", Icons.Default.Hub)
     object Projects : Screen("projects", "Projets", Icons.Default.Folder)
     object Files : Screen("files", "Fichiers", Icons.Default.InsertDriveFile)
     object Terminal : Screen("terminal", "Terminal", Icons.Default.Terminal)
@@ -36,16 +38,21 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
 @Composable
 fun MainScreen() {
     val navController = rememberNavController()
+    // Barre limitée à 5 onglets ; les autres écrans restent accessibles depuis l'Accueil.
     val screens = listOf(
         Screen.Dashboard,
         Screen.OpenCode,
-        Screen.Projects,
-        Screen.Files,
+        Screen.OmniRoute,
         Screen.Terminal,
-        Screen.Build,
-        Screen.Sessions,
         Screen.Settings
     )
+    val navigate: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -68,13 +75,7 @@ fun MainScreen() {
                         label = { Text(screen.title) },
                         selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                         onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                            navigate(screen.route)
                         }
                     )
                 }
@@ -86,8 +87,9 @@ fun MainScreen() {
             startDestination = Screen.Dashboard.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Dashboard.route) { DashboardScreen() }
+            composable(Screen.Dashboard.route) { DashboardScreen(onNavigate = navigate) }
             composable(Screen.OpenCode.route) { OpenCodeScreen() }
+            composable(Screen.OmniRoute.route) { OmniRouteScreen() }
             composable(Screen.Projects.route) { ProjectsScreen() }
             composable(Screen.Files.route) { FilesScreen() }
             composable(Screen.Terminal.route) { TerminalScreen() }

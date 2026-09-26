@@ -9,11 +9,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
+    val omniConfig by viewModel.omniConfig.collectAsState()
+    val testResult by viewModel.testResult.collectAsState()
     var openCodeAddress by remember { mutableStateOf("127.0.0.1") }
     var openCodePort by remember { mutableStateOf("20128") }
     var bridgeAddress by remember { mutableStateOf("127.0.0.1") }
@@ -32,6 +38,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 24.dp)
         )
+
+        omniConfig?.let { config ->
+            OmniRouteSection(
+                initialUrl = config.baseUrl,
+                initialKey = config.apiKey,
+                initialCommand = config.startCommand,
+                testResult = testResult,
+                onSaveAndTest = viewModel::saveAndTestOmniRoute
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // OpenCode Server
         SettingsSection(title = "Serveur OpenCode") {
@@ -149,6 +166,76 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                     Text("Sombre")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun OmniRouteSection(
+    initialUrl: String,
+    initialKey: String,
+    initialCommand: String,
+    testResult: String?,
+    onSaveAndTest: (String, String, String) -> Unit
+) {
+    var url by remember { mutableStateOf(initialUrl) }
+    var apiKey by remember { mutableStateOf(initialKey) }
+    var command by remember { mutableStateOf(initialCommand) }
+    var showKey by remember { mutableStateOf(false) }
+
+    SettingsSection(title = "OmniRoute") {
+        OutlinedTextField(
+            value = url,
+            onValueChange = { url = it },
+            label = { Text("URL d'OmniRoute") },
+            placeholder = { Text("http://localhost:20128") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { apiKey = it },
+            label = { Text("Clé API OmniRoute") },
+            supportingText = { Text("À créer dans l'onglet OmniRoute > clé (API Manager). Laisser vide si non exigée.") },
+            singleLine = true,
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { showKey = !showKey }) {
+                    Icon(
+                        if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (showKey) "Masquer" else "Afficher"
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = command,
+            onValueChange = { command = it },
+            label = { Text("Commande de démarrage (Termux)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(
+            onClick = { onSaveAndTest(url, apiKey, command) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Save, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Enregistrer et tester la connexion")
+        }
+        testResult?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (it.startsWith("✗")) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

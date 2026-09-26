@@ -16,6 +16,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
+    <!-- Démarrage d'OmniRoute dans Termux sans ouvrir le terminal -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
+
     <application
         android:name=".TermuxDevCenterApp"
         android:allowBackup="true"

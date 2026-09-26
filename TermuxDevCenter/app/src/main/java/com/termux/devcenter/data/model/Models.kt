@@ -4,7 +4,10 @@ data class ServerStatus(
     val openCodeConnected: Boolean = false,
     val serverActive: Boolean = false,
     val bridgeConnected: Boolean = false,
-    val omniExecConnected: Boolean = false
+    val omniExecConnected: Boolean = false,
+    val omniRouteConnected: Boolean = false,
+    val omniRouteModelCount: Int = 0,
+    val omniRouteMessage: String? = null
 )
 
 data class OpenCodeSession(

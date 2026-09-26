@@ -1,4 +1,5 @@
-build/
+/TermuxDevCenter/build/
+/TermuxDevCenter/app/build/
 .gradle/
 .kotlin/
 local.properties

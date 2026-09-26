@@ -8,6 +8,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class OmniExecClient(
     private val baseUrl: String = "http://127.0.0.1:20129"
@@ -23,8 +25,8 @@ class OmniExecClient(
         })
         .build()
 
-    suspend fun executeCommand(command: String, workdir: String? = null): Result<Map<String, Any>> {
-        return try {
+    suspend fun executeCommand(command: String, workdir: String? = null): Result<Map<String, Any>> = withContext(Dispatchers.IO) {
+        try {
             val json = JsonObject().apply {
                 addProperty("jsonrpc", "2.0")
                 addProperty("id", System.currentTimeMillis())
@@ -57,15 +59,14 @@ class OmniExecClient(
         }
     }
 
-    suspend fun checkHealth(): Result<Boolean> {
-        return try {
+    suspend fun checkHealth(): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
             val request = Request.Builder()
                 .url("$baseUrl/health")
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            Result.success(response.isSuccessful)
+            client.newCall(request).execute().use { Result.success(it.isSuccessful) }
         } catch (e: Exception) {
             Result.failure(e)
         }

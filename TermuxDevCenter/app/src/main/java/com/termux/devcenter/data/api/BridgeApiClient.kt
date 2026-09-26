@@ -8,6 +8,8 @@ import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class BridgeApiClient(
     private val baseUrl: String = "http://127.0.0.1:8080"
@@ -75,25 +77,25 @@ class BridgeApiClient(
         }
     }
 
-    suspend fun checkHealth(): Result<Boolean> {
-        return try {
+    suspend fun checkHealth(): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
             val request = Request.Builder()
                 .url("$baseUrl/health")
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            Result.success(response.isSuccessful)
+            client.newCall(request).execute().use { Result.success(it.isSuccessful) }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private inline fun <reified T> executeRequest(
+    // Les appels réseau sur le thread principal lèvent NetworkOnMainThreadException.
+    private suspend inline fun <reified T> executeRequest(
         endpoint: String,
-        requestBuilder: Request.Builder.() -> Request.Builder
-    ): Result<T> {
-        return try {
+        crossinline requestBuilder: Request.Builder.() -> Request.Builder
+    ): Result<T> = withContext(Dispatchers.IO) {
+        try {
             val request = Request.Builder()
                 .url("$baseUrl$endpoint")
                 .requestBuilder()

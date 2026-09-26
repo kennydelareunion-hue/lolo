@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
@@ -16,16 +19,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
     val messages by viewModel.messages.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
+    val models by viewModel.models.collectAsState()
+    val selectedModel by viewModel.selectedModel.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val loadingModels by viewModel.loadingModels.collectAsState()
     var promptText by remember { mutableStateOf("") }
+    var modelMenuOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+            listState.scrollToItem(messages.size - 1, Int.MAX_VALUE / 2)
         }
     }
 
@@ -34,11 +43,60 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text(
-            text = "OpenCode Interface",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ExposedDropdownMenuBox(
+                expanded = modelMenuOpen,
+                onExpandedChange = { modelMenuOpen = it && models.isNotEmpty() },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    value = selectedModel.ifBlank { if (loadingModels) "Chargement…" else "Aucun modèle" },
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Modèle OmniRoute") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuOpen) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = modelMenuOpen,
+                    onDismissRequest = { modelMenuOpen = false }
+                ) {
+                    models.forEach { model ->
+                        DropdownMenuItem(
+                            text = { Text(model) },
+                            onClick = {
+                                viewModel.selectModel(model)
+                                modelMenuOpen = false
+                            }
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = { viewModel.refreshModels() }, enabled = !loadingModels) {
+                Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir les modèles")
+            }
+            IconButton(onClick = { viewModel.clearConversation() }, enabled = messages.isNotEmpty()) {
+                Icon(Icons.Default.DeleteSweep, contentDescription = "Nouvelle conversation")
+            }
+        }
+
+        error?.let {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Text(
+                    text = it,
+                    modifier = Modifier.padding(12.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
 
         // Messages
         Card(
@@ -126,15 +184,17 @@ fun MessageBubble(message: com.termux.devcenter.data.model.OpenCodeMessage) {
                 modifier = Modifier.padding(12.dp)
             ) {
                 Text(
-                    text = if (isUser) "Vous" else "Claude",
+                    text = if (isUser) "Vous" else "Assistant",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                SelectionContainer {
+                    Text(
+                        text = message.content.ifEmpty { "…" },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }
