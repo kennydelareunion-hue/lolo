@@ -1,6 +1,7 @@
 package com.termux.devcenter.data.omniroute
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -12,7 +13,11 @@ data class OmniRouteConfig(
     val baseUrl: String = DEFAULT_BASE_URL,
     val apiKey: String = "",
     val model: String = "",
-    val startCommand: String = DEFAULT_START_COMMAND
+    val startCommand: String = DEFAULT_START_COMMAND,
+    val mcpUrl: String = DEFAULT_MCP_URL,
+    val mcpEnabled: Boolean = true,
+    val confirmCommands: Boolean = true,
+    val mcpStartCommand: String = DEFAULT_MCP_START_COMMAND
 ) {
     /** URL sans slash final, utilisable pour construire les endpoints. */
     val normalizedBaseUrl: String
@@ -22,6 +27,8 @@ data class OmniRouteConfig(
     companion object {
         const val DEFAULT_BASE_URL = "http://localhost:20128"
         const val DEFAULT_START_COMMAND = "omniroute"
+        const val DEFAULT_MCP_URL = "http://127.0.0.1:20129/mcp"
+        const val DEFAULT_MCP_START_COMMAND = "node ~/.config/opencode/mcp-servers/omni-exec/http-server.js"
     }
 }
 
@@ -33,24 +40,37 @@ class OmniRouteSettings(private val context: Context) {
         val API_KEY = stringPreferencesKey("api_key")
         val MODEL = stringPreferencesKey("model")
         val START_COMMAND = stringPreferencesKey("start_command")
+        val MCP_URL = stringPreferencesKey("mcp_url")
+        val MCP_ENABLED = booleanPreferencesKey("mcp_enabled")
+        val CONFIRM_COMMANDS = booleanPreferencesKey("confirm_commands")
+        val MCP_START_COMMAND = stringPreferencesKey("mcp_start_command")
     }
 
     val config: Flow<OmniRouteConfig> = context.omniDataStore.data.map { p ->
+        val d = OmniRouteConfig()
         OmniRouteConfig(
-            baseUrl = p[Keys.BASE_URL] ?: OmniRouteConfig.DEFAULT_BASE_URL,
-            apiKey = p[Keys.API_KEY] ?: "",
-            model = p[Keys.MODEL] ?: "",
-            startCommand = p[Keys.START_COMMAND] ?: OmniRouteConfig.DEFAULT_START_COMMAND
+            baseUrl = p[Keys.BASE_URL] ?: d.baseUrl,
+            apiKey = p[Keys.API_KEY] ?: d.apiKey,
+            model = p[Keys.MODEL] ?: d.model,
+            startCommand = p[Keys.START_COMMAND] ?: d.startCommand,
+            mcpUrl = p[Keys.MCP_URL] ?: d.mcpUrl,
+            mcpEnabled = p[Keys.MCP_ENABLED] ?: d.mcpEnabled,
+            confirmCommands = p[Keys.CONFIRM_COMMANDS] ?: d.confirmCommands,
+            mcpStartCommand = p[Keys.MCP_START_COMMAND] ?: d.mcpStartCommand
         )
     }
 
     suspend fun current(): OmniRouteConfig = config.first()
 
-    suspend fun save(baseUrl: String, apiKey: String, startCommand: String) {
+    suspend fun save(config: OmniRouteConfig) {
         context.omniDataStore.edit {
-            it[Keys.BASE_URL] = baseUrl.trim()
-            it[Keys.API_KEY] = apiKey.trim()
-            it[Keys.START_COMMAND] = startCommand.trim()
+            it[Keys.BASE_URL] = config.baseUrl.trim()
+            it[Keys.API_KEY] = config.apiKey.trim()
+            it[Keys.START_COMMAND] = config.startCommand.trim()
+            it[Keys.MCP_URL] = config.mcpUrl.trim()
+            it[Keys.MCP_ENABLED] = config.mcpEnabled
+            it[Keys.CONFIRM_COMMANDS] = config.confirmCommands
+            it[Keys.MCP_START_COMMAND] = config.mcpStartCommand.trim()
         }
     }
 

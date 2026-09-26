@@ -7,7 +7,12 @@ data class ServerStatus(
     val omniExecConnected: Boolean = false,
     val omniRouteConnected: Boolean = false,
     val omniRouteModelCount: Int = 0,
-    val omniRouteMessage: String? = null
+    val omniRouteMessage: String? = null,
+    /** OmniRoute répond mais exige une clé API (HTTP 401/403). */
+    val omniRouteAuthRequired: Boolean = false,
+    val omniExecToolCount: Int = 0,
+    val omniExecMessage: String? = null,
+    val checked: Boolean = false
 )
 
 data class OpenCodeSession(

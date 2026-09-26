@@ -1,13 +1,16 @@
 package com.termux.devcenter.data.omniroute
 
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -19,7 +22,17 @@ import java.util.concurrent.TimeUnit
 
 data class ChatMessage(val role: String, val content: String)
 
-class OmniRouteException(message: String, val httpCode: Int? = null) : Exception(message)
+data class ToolCall(val id: String, val name: String, val arguments: String)
+
+sealed interface ChatEvent {
+    data class Text(val text: String) : ChatEvent
+    data class ToolCalls(val calls: List<ToolCall>) : ChatEvent
+}
+
+class OmniRouteException(message: String, val httpCode: Int? = null) : Exception(message) {
+    /** OmniRoute tourne mais refuse la requête faute de clé API valide. */
+    val isAuthError: Boolean get() = httpCode == 401 || httpCode == 403
+}
 
 /** Client de l'API compatible OpenAI exposée par OmniRoute (`/v1/models`, `/v1/chat/completions`). */
 class OmniRouteClient(private val config: OmniRouteConfig) {
@@ -44,18 +57,28 @@ class OmniRouteClient(private val config: OmniRouteConfig) {
     }
 
     /** Émet les fragments de texte de la réponse au fil du streaming SSE. */
-    fun streamChat(model: String, messages: List<ChatMessage>): Flow<String> = callbackFlow {
+    fun streamChat(model: String, messages: List<ChatMessage>): Flow<String> {
+        val json = JsonArray().apply {
+            messages.forEach { m ->
+                add(JsonObject().apply {
+                    addProperty("role", m.role)
+                    addProperty("content", m.content)
+                })
+            }
+        }
+        return streamCompletion(model, json, null).filterIsInstance<ChatEvent.Text>().map { it.text }
+    }
+
+    /**
+     * Streaming complet : fragments de texte puis, en fin de réponse, les appels d'outils
+     * demandés par le modèle (format OpenAI `tool_calls`).
+     */
+    fun streamCompletion(model: String, messages: JsonArray, tools: JsonArray?): Flow<ChatEvent> = channelFlow {
         val payload = JsonObject().apply {
             addProperty("model", model)
             addProperty("stream", true)
-            add("messages", JsonArray().apply {
-                messages.forEach { m ->
-                    add(JsonObject().apply {
-                        addProperty("role", m.role)
-                        addProperty("content", m.content)
-                    })
-                }
-            })
+            add("messages", messages)
+            if (tools != null && tools.size() > 0) add("tools", tools)
         }
         val request = Request.Builder()
             .url("$baseUrl/v1/chat/completions")
@@ -65,45 +88,82 @@ class OmniRouteClient(private val config: OmniRouteConfig) {
             .build()
         val call = streamClient.newCall(request)
 
-        try {
-            call.execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw httpError(response.code, response.body?.string().orEmpty())
-                }
-                val source = response.body?.source() ?: throw OmniRouteException("Réponse vide d'OmniRoute")
-                val isJson = response.header("Content-Type").orEmpty().contains("application/json")
-                if (isJson) {
-                    // Serveur ayant ignoré stream=true : réponse complète en un bloc.
-                    extractMessageContent(source.readUtf8())?.let { trySend(it) }
-                } else {
-                    while (!source.exhausted()) {
-                        val line = source.readUtf8Line() ?: break
-                        if (!line.startsWith("data:")) continue
-                        val data = line.removePrefix("data:").trim()
-                        if (data == "[DONE]") break
-                        extractDeltaContent(data)?.let { trySend(it) }
+        val reader = launch(Dispatchers.IO) {
+            val toolCalls = sortedMapOf<Int, ToolCallBuilder>()
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw httpError(response.code, response.body?.string().orEmpty())
+                    }
+                    val source = response.body?.source() ?: throw OmniRouteException("Réponse vide d'OmniRoute")
+                    if (response.header("Content-Type").orEmpty().contains("application/json")) {
+                        // Serveur ayant ignoré stream=true : réponse complète en un bloc.
+                        parseChunk(JsonParser.parseString(source.readUtf8()), toolCalls)?.let { send(ChatEvent.Text(it)) }
+                    } else {
+                        while (!source.exhausted()) {
+                            val line = source.readUtf8Line() ?: break
+                            if (!line.startsWith("data:")) continue
+                            val data = line.removePrefix("data:").trim()
+                            if (data == "[DONE]") break
+                            val json = runCatching { JsonParser.parseString(data) }.getOrNull() ?: continue
+                            parseChunk(json, toolCalls)?.let { send(ChatEvent.Text(it)) }
+                        }
                     }
                 }
+                if (toolCalls.isNotEmpty()) {
+                    send(ChatEvent.ToolCalls(toolCalls.entries.map { (index, b) -> b.build(index) }))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (call.isCanceled()) throw CancellationException("annulé")
+                throw friendly(e)
             }
-            close()
-        } catch (e: Throwable) {
-            close(if (call.isCanceled()) null else friendly(e))
         }
-        awaitClose { call.cancel() }
-    }.flowOn(Dispatchers.IO)
+        try {
+            reader.join()
+        } finally {
+            call.cancel()
+        }
+    }
 
-    private fun extractDeltaContent(data: String): String? = runCatching {
-        val obj = JsonParser.parseString(data).asJsonObject
-        obj.getAsJsonObject("error")?.let { throw OmniRouteException(it.get("message")?.asString ?: data) }
+    private class ToolCallBuilder {
+        var id: String? = null
+        val name = StringBuilder()
+        val arguments = StringBuilder()
+
+        fun build(index: Int) = ToolCall(id ?: "call_$index", name.toString(), arguments.toString())
+    }
+
+    /** Renvoie le texte du fragment et accumule les morceaux d'appels d'outils. */
+    private fun parseChunk(json: JsonElement, toolCalls: MutableMap<Int, ToolCallBuilder>): String? {
+        if (!json.isJsonObject) return null
+        val obj = json.asJsonObject
+        obj.get("error")?.takeIf { !it.isJsonNull }?.let { err ->
+            val msg = if (err.isJsonObject) err.asJsonObject.get("message")?.asString else err.asString
+            throw OmniRouteException(msg ?: err.toString())
+        }
         val choice = obj.getAsJsonArray("choices")?.firstOrNull()?.asJsonObject ?: return null
-        val delta = choice.getAsJsonObject("delta") ?: choice.getAsJsonObject("message")
-        delta?.get("content")?.takeIf { !it.isJsonNull }?.asString
-    }.getOrElse { if (it is OmniRouteException) throw it else null }
+        val delta = choice.getAsJsonObject("delta") ?: choice.getAsJsonObject("message") ?: return null
 
-    private fun extractMessageContent(body: String): String? = runCatching {
-        JsonParser.parseString(body).asJsonObject.getAsJsonArray("choices")
-            ?.firstOrNull()?.asJsonObject?.getAsJsonObject("message")?.get("content")?.asString
-    }.getOrNull()
+        delta.getAsJsonArray("tool_calls")?.forEachIndexed { position, el ->
+            val tc = el.asJsonObject
+            val index = tc.get("index")?.asInt ?: position
+            val builder = toolCalls.getOrPut(index) { ToolCallBuilder() }
+            tc.get("id")?.takeIf { !it.isJsonNull }?.asString?.let { builder.id = it }
+            tc.getAsJsonObject("function")?.let { fn ->
+                fn.get("name")?.takeIf { !it.isJsonNull }?.asString?.let { name ->
+                    // Certains proxys répètent le nom complet à chaque fragment.
+                    if (builder.name.toString() != name) builder.name.append(name)
+                }
+                fn.get("arguments")?.takeIf { !it.isJsonNull }?.let { args ->
+                    builder.arguments.append(if (args.isJsonPrimitive) args.asString else args.toString())
+                }
+            }
+        }
+        return delta.get("content")?.takeIf { !it.isJsonNull && it.isJsonPrimitive }?.asString
+            ?.takeIf { it.isNotEmpty() }
+    }
 
     private fun httpError(code: Int, body: String): OmniRouteException {
         val serverMessage = runCatching {
@@ -111,7 +171,8 @@ class OmniRouteClient(private val config: OmniRouteConfig) {
             if (err.isJsonObject) err.asJsonObject.get("message").asString else err.asString
         }.getOrNull() ?: body.take(300)
         val hint = when (code) {
-            401, 403 -> "\nVérifiez la clé API dans Paramètres (créez-la dans OmniRoute > API Keys)."
+            401, 403 -> "\nOmniRoute est bien démarré mais demande une clé API : créez-la dans l'onglet " +
+                "OmniRoute (icône clé) puis collez-la dans Réglages."
             404 -> "\nModèle ou endpoint introuvable : rafraîchissez la liste des modèles."
             else -> ""
         }

@@ -3,9 +3,11 @@ package com.termux.devcenter.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.termux.devcenter.data.mcp.McpClient
 import com.termux.devcenter.data.omniroute.OmniRouteClient
 import com.termux.devcenter.data.omniroute.OmniRouteConfig
 import com.termux.devcenter.data.omniroute.OmniRouteSettings
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,9 +15,6 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val omniSettings = OmniRouteSettings(application)
-
-    private val _settings = MutableStateFlow(mapOf<String, String>())
-    val settings: StateFlow<Map<String, String>> = _settings.asStateFlow()
 
     private val _omniConfig = MutableStateFlow<OmniRouteConfig?>(null)
     val omniConfig: StateFlow<OmniRouteConfig?> = _omniConfig.asStateFlow()
@@ -27,25 +26,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { _omniConfig.value = omniSettings.current() }
     }
 
-    fun updateSetting(key: String, value: String) {
-        _settings.value = _settings.value + (key to value)
-    }
-
-    /** Enregistre puis vérifie la connexion en listant les modèles. */
-    fun saveAndTestOmniRoute(baseUrl: String, apiKey: String, startCommand: String) {
+    /** Enregistre puis vérifie OmniRoute (liste des modèles) et Omni-Exec (liste des outils). */
+    fun saveAndTest(edited: OmniRouteConfig) {
         viewModelScope.launch {
-            omniSettings.save(baseUrl, apiKey, startCommand)
-            val config = omniSettings.current()
+            val config = edited.copy(model = omniSettings.current().model)
+            omniSettings.save(config)
             _omniConfig.value = config
             _testResult.value = "Test en cours…"
-            _testResult.value = OmniRouteClient(config).listModels().fold(
-                onSuccess = { models ->
-                    if (models.isEmpty()) "✓ Connecté, mais aucun modèle : ajoutez un fournisseur dans l'onglet OmniRoute."
-                    else "✓ Connecté — ${models.size} modèle(s) : ${models.take(5).joinToString()}" +
-                        if (models.size > 5) "…" else ""
+            val models = async { OmniRouteClient(config).listModels() }
+            val tools = async { if (config.mcpEnabled) McpClient.forUrl(config.mcpUrl).listTools() else null }
+
+            val omniLine = models.await().fold(
+                onSuccess = { list ->
+                    if (list.isEmpty()) "✓ OmniRoute connecté, mais aucun modèle : ajoutez un fournisseur."
+                    else "✓ OmniRoute : ${list.size} modèle(s) — ${list.take(4).joinToString()}" +
+                        if (list.size > 4) "…" else ""
                 },
                 onFailure = { "✗ ${it.message}" }
             )
+            val execLine = tools.await()?.fold(
+                onSuccess = { "✓ Omni-Exec : ${it.size} outil(s) — ${it.joinToString { t -> t.name }}" },
+                onFailure = { "✗ ${it.message}" }
+            ) ?: "Omni-Exec désactivé"
+            _testResult.value = "$omniLine\n\n$execLine"
         }
     }
 }

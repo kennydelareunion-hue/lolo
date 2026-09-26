@@ -76,6 +76,39 @@ class OmniRouteClientTest {
     }
 
     @Test
+    fun `streamCompletion assemble les appels d'outils fragmentes`() = runBlocking {
+        val sse = listOf(
+            """data: {"choices":[{"delta":{"content":"Je vérifie."}}]}""",
+            """data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"run_command","arguments":""}}]}}]}""",
+            """data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"comm"}}]}}]}""",
+            """data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"and\":\"ls\"}"}}]}}]}""",
+            """data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""",
+            "data: [DONE]"
+        ).joinToString("\n\n", postfix = "\n\n")
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(sse))
+        val tools = com.google.gson.JsonParser.parseString(
+            """[{"type":"function","function":{"name":"run_command","parameters":{"type":"object"}}}]"""
+        ).asJsonArray
+
+        val events = client().streamCompletion("m", com.google.gson.JsonArray(), tools).toList()
+
+        assertEquals(ChatEvent.Text("Je vérifie."), events[0])
+        assertEquals(
+            ChatEvent.ToolCalls(listOf(ToolCall("call_1", "run_command", """{"command":"ls"}"""))),
+            events[1]
+        )
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"tools\""))
+    }
+
+    @Test
+    fun `erreur 401 est reconnue comme cle manquante`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"Authentication required"}"""))
+        val error = client(apiKey = "").listModels().exceptionOrNull() as OmniRouteException
+        assertTrue(error.isAuthError)
+        assertTrue(error.message!!.contains("Authentication required"))
+    }
+
+    @Test
     fun `erreur 401 donne un message explicite`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":{"message":"Invalid API key"}}"""))
         try {

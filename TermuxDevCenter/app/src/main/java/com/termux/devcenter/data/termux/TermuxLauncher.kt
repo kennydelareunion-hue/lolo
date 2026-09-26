@@ -34,12 +34,15 @@ object TermuxLauncher {
     }
 
     /**
-     * Démarre OmniRoute détaché du shell pour qu'il survive à la fin de la commande.
+     * Démarre un service détaché du shell pour qu'il survive à la fin de la commande.
      * Pas de test « déjà lancé » : une seconde instance échoue simplement à ouvrir le port.
      */
-    fun startOmniRoute(context: Context, startCommand: String): Result<Unit> =
+    fun startDetached(context: Context, command: String, logFile: String): Result<Unit> =
         runInBackground(
             context,
-            "mkdir -p ~/.omniroute; nohup $startCommand > ~/.omniroute/omniroute.log 2>&1 &"
+            "mkdir -p \"\$(dirname $logFile)\"; nohup $command > $logFile 2>&1 &"
         )
+
+    const val OMNIROUTE_LOG = "~/.omniroute/omniroute.log"
+    const val OMNI_EXEC_LOG = "~/.termux-dev-center/omni-exec.log"
 }

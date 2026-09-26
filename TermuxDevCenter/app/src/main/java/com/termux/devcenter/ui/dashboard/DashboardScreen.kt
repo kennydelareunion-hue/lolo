@@ -4,9 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,140 +20,153 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termux.devcenter.data.model.ServerStatus
 import com.termux.devcenter.data.termux.TermuxLauncher
 
+private val Green = Color(0xFF4CAF50)
+private val Orange = Color(0xFFFF9800)
+private val Red = Color(0xFFF44336)
+private val Grey = Color(0xFF9E9E9E)
+
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = viewModel(),
     onNavigate: (String) -> Unit = {}
 ) {
-    val serverStatus by viewModel.serverStatus.collectAsState()
+    val status by viewModel.serverStatus.collectAsState()
     val startMessage by viewModel.startMessage.collectAsState()
     val context = LocalContext.current
+    var pendingStart by remember { mutableStateOf<Service?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted -> if (granted) viewModel.startOmniRoute() else viewModel.onPermissionDenied() }
+    ) { granted ->
+        val service = pendingStart
+        if (granted && service != null) viewModel.start(service) else viewModel.onPermissionDenied()
+    }
+    val start: (Service) -> Unit = { service ->
+        if (TermuxLauncher.hasPermission(context)) viewModel.start(service)
+        else {
+            pendingStart = service
+            permissionLauncher.launch(TermuxLauncher.PERMISSION)
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text(
-            text = "Termux Dev Center",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Services", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
 
-        // Status cards
-        StatusSection(serverStatus)
+                val omniColor = when {
+                    !status.checked -> Grey
+                    status.omniRouteConnected -> Green
+                    status.omniRouteAuthRequired -> Orange
+                    else -> Red
+                }
+                ServiceRow(
+                    label = "OmniRoute",
+                    color = omniColor,
+                    state = when (omniColor) {
+                        Green -> "Connecté"
+                        Orange -> "Clé API requise"
+                        Grey -> "…"
+                        else -> "Arrêté"
+                    },
+                    detail = when {
+                        status.omniRouteConnected && status.omniRouteModelCount == 0 ->
+                            "Aucun modèle : connectez un fournisseur (Kiro…) dans l'onglet OmniRoute."
+                        status.omniRouteConnected -> "${status.omniRouteModelCount} modèle(s) disponible(s)"
+                        status.omniRouteAuthRequired ->
+                            "OmniRoute tourne. Créez une clé API (onglet OmniRoute › icône clé) et collez-la dans Réglages."
+                        else -> status.omniRouteMessage
+                    },
+                    action = when (omniColor) {
+                        Orange -> "Réglages" to { onNavigate("settings") }
+                        Red -> "Démarrer" to { start(Service.OMNIROUTE) }
+                        else -> null
+                    }
+                )
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        Spacer(modifier = Modifier.height(12.dp))
+                val execColor = when {
+                    !status.checked -> Grey
+                    status.omniExecConnected -> Green
+                    else -> Red
+                }
+                ServiceRow(
+                    label = "Omni-Exec (MCP)",
+                    color = execColor,
+                    state = when (execColor) {
+                        Green -> "Connecté"
+                        Grey -> "…"
+                        else -> "Déconnecté"
+                    },
+                    detail = if (status.omniExecConnected) "${status.omniExecToolCount} outil(s) pour Claude"
+                    else status.omniExecMessage,
+                    action = if (execColor == Red) "Démarrer" to { start(Service.OMNI_EXEC) } else null
+                )
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        OmniRouteCard(
-            status = serverStatus,
-            startMessage = startMessage,
-            onStart = {
-                if (TermuxLauncher.hasPermission(context)) viewModel.startOmniRoute()
-                else permissionLauncher.launch(TermuxLauncher.PERMISSION)
-            },
-            onOpenDashboard = { onNavigate("omniroute") },
-            onOpenChat = { onNavigate("opencode") },
-            onRefresh = viewModel::refreshStatus
-        )
+                ServiceRow(
+                    label = "Bridge Termux",
+                    color = if (!status.checked) Grey else if (status.bridgeConnected) Green else Red,
+                    state = if (status.bridgeConnected) "Connecté" else "Déconnecté",
+                    detail = null,
+                    action = null
+                )
+
+                startMessage?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = viewModel::refreshStatus) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Actualiser")
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
-
-        // Quick actions grid
         Text(
             text = "Actions rapides",
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(bottom = 12.dp)
         )
-
         QuickActionsGrid(onNavigate)
     }
 }
 
 @Composable
-fun OmniRouteCard(
-    status: ServerStatus,
-    startMessage: String?,
-    onStart: () -> Unit,
-    onOpenDashboard: () -> Unit,
-    onOpenChat: () -> Unit,
-    onRefresh: () -> Unit
+private fun ServiceRow(
+    label: String,
+    color: Color,
+    state: String,
+    detail: String?,
+    action: Pair<String, () -> Unit>?
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            StatusRow("OmniRoute", status.omniRouteConnected)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = when {
-                    status.omniRouteConnected && status.omniRouteModelCount == 0 ->
-                        "Aucun modèle disponible : connectez un fournisseur (Kiro…)."
-                    status.omniRouteConnected -> "${status.omniRouteModelCount} modèle(s) disponible(s)"
-                    else -> status.omniRouteMessage ?: "Vérification…"
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
-            startMessage?.let {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (status.omniRouteConnected) {
-                    Button(onClick = onOpenChat) { Text("Discuter") }
-                    OutlinedButton(onClick = onOpenDashboard) { Text("Fournisseurs") }
-                } else {
-                    Button(onClick = onStart) { Text("Démarrer OmniRoute") }
-                    OutlinedButton(onClick = onRefresh) { Text("Réessayer") }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusSection(status: ServerStatus) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            StatusRow("OpenCode", status.openCodeConnected)
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-            StatusRow("Serveur Bridge", status.bridgeConnected)
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-            StatusRow("Omni-Exec", status.omniExecConnected)
+            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Circle, contentDescription = null, modifier = Modifier.size(12.dp), tint = color)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = state, style = MaterialTheme.typography.bodyMedium, color = color)
+            }
         }
-    }
-}
-
-@Composable
-fun StatusRow(label: String, isConnected: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = label, style = MaterialTheme.typography.bodyLarge)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.Circle,
-                contentDescription = null,
-                modifier = Modifier.size(12.dp),
-                tint = if (isConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (isConnected) "Connecté" else "Déconnecté",
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
-            )
+        detail?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        action?.let { (text, onClick) ->
+            Spacer(Modifier.height(4.dp))
+            FilledTonalButton(onClick = onClick) { Text(text, maxLines = 1) }
         }
     }
 }
@@ -162,56 +174,46 @@ fun StatusRow(label: String, isConnected: Boolean) {
 @Composable
 fun QuickActionsGrid(onNavigate: (String) -> Unit = {}) {
     val actions = listOf(
-        QuickAction("Chat IA", Icons.Default.Code, Color(0xFF2196F3), "opencode"),
+        QuickAction("Chat IA", Icons.Default.Chat, Color(0xFF2196F3), "opencode"),
+        QuickAction("OmniRoute", Icons.Default.Hub, Color(0xFF3F51B5), "omniroute"),
         QuickAction("Projets", Icons.Default.Folder, Color(0xFF4CAF50), "projects"),
         QuickAction("Fichiers", Icons.Default.InsertDriveFile, Color(0xFFFF9800), "files"),
         QuickAction("Terminal", Icons.Default.Terminal, Color(0xFF9C27B0), "terminal"),
         QuickAction("Compilation", Icons.Default.Build, Color(0xFFF44336), "build"),
-        QuickAction("Sessions", Icons.Default.History, Color(0xFF00BCD4), "sessions")
+        QuickAction("Sessions", Icons.Default.History, Color(0xFF00BCD4), "sessions"),
+        QuickAction("Réglages", Icons.Default.Settings, Color(0xFF607D8B), "settings")
     )
-
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(actions) { action ->
-            QuickActionCard(action, onClick = { onNavigate(action.route) })
+    // Grille non paresseuse : elle vit dans une colonne défilante.
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        actions.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { action ->
+                    QuickActionCard(action, Modifier.weight(1f)) { onNavigate(action.route) }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-fun QuickActionCard(action: QuickAction, onClick: () -> Unit = {}) {
+fun QuickActionCard(action: QuickAction, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(100.dp)
+        modifier = modifier
+            .height(96.dp)
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = action.color.copy(alpha = 0.1f)
-        )
+        colors = CardDefaults.cardColors(containerColor = action.color.copy(alpha = 0.1f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = action.icon,
-                contentDescription = action.title,
-                modifier = Modifier.size(32.dp),
-                tint = action.color
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = action.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = action.color
-            )
+            Icon(action.icon, contentDescription = action.title, modifier = Modifier.size(30.dp), tint = action.color)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(action.title, style = MaterialTheme.typography.bodyMedium, color = action.color, maxLines = 1)
         }
     }
 }

@@ -31,7 +31,7 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
     object Terminal : Screen("terminal", "Terminal", Icons.Default.Terminal)
     object Build : Screen("build", "Build", Icons.Default.Build)
     object Sessions : Screen("sessions", "Sessions", Icons.Default.History)
-    object Settings : Screen("settings", "Paramètres", Icons.Default.Settings)
+    object Settings : Screen("settings", "Réglages", Icons.Default.Settings)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,7 +72,14 @@ fun MainScreen() {
                 screens.forEach { screen ->
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.title) },
-                        label = { Text(screen.title) },
+                        label = {
+                            Text(
+                                screen.title,
+                                maxLines = 1,
+                                softWrap = false,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
                         selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                         onClick = {
                             navigate(screen.route)
