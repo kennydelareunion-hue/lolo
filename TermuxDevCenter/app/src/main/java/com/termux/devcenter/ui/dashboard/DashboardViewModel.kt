@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.termux.devcenter.data.api.BridgeApiClient
 import com.termux.devcenter.data.mcp.McpClient
 import com.termux.devcenter.data.model.ServerStatus
+import com.termux.devcenter.data.omniroute.FreeModelCatalog
+import com.termux.devcenter.data.omniroute.ModelTier
 import com.termux.devcenter.data.omniroute.OmniRouteClient
 import com.termux.devcenter.data.omniroute.OmniRouteException
 import com.termux.devcenter.data.omniroute.OmniRouteSettings
@@ -28,6 +30,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val bridgeClient = BridgeApiClient()
     private val omniSettings = OmniRouteSettings(application)
+    private val freeCatalog = FreeModelCatalog.load(application)
 
     init {
         viewModelScope.launch {
@@ -42,7 +45,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val config = omniSettings.current()
         val (bridgeOk, models, tools) = kotlinx.coroutines.coroutineScope {
             val bridge = async { bridgeClient.checkHealth().getOrDefault(false) }
-            val omniRoute = async { OmniRouteClient(config).listModels() }
+            val omniRoute = async { OmniRouteClient(config).listModelInfo(freeCatalog, config.connectedOnly) }
             val omniExec = async {
                 if (config.mcpEnabled) McpClient.forUrl(config.mcpUrl).listTools() else null
             }
@@ -57,6 +60,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             omniExecMessage = if (tools == null) "Désactivé dans Réglages" else tools.exceptionOrNull()?.message,
             omniRouteConnected = models.isSuccess,
             omniRouteModelCount = models.getOrNull()?.size ?: 0,
+            omniRouteProCount = models.getOrNull()?.count { it.tier == ModelTier.PRO } ?: 0,
+            omniRouteFreeCount = models.getOrNull()?.count { it.tier == ModelTier.FREE } ?: 0,
             omniRouteMessage = modelError?.message,
             omniRouteAuthRequired = (modelError as? OmniRouteException)?.isAuthError == true,
             checked = true

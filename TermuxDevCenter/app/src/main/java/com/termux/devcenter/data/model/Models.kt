@@ -7,6 +7,8 @@ data class ServerStatus(
     val omniExecConnected: Boolean = false,
     val omniRouteConnected: Boolean = false,
     val omniRouteModelCount: Int = 0,
+    val omniRouteProCount: Int = 0,
+    val omniRouteFreeCount: Int = 0,
     val omniRouteMessage: String? = null,
     /** OmniRoute répond mais exige une clé API (HTTP 401/403). */
     val omniRouteAuthRequired: Boolean = false,
@@ -63,8 +65,12 @@ data class BuildResult(
 data class OpenCodeMessage(
     val role: String, // "user" or "assistant"
     val content: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    /** Modèle ayant produit la réponse, affiché pour savoir à qui on parle. */
+    val model: ModelLabel? = null
 )
+
+data class ModelLabel(val name: String, val provider: String, val free: Boolean)
 
 data class LogEntry(
     val level: LogLevel,

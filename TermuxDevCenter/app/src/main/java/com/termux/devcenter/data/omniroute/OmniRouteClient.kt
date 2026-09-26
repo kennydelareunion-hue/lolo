@@ -44,17 +44,33 @@ class OmniRouteClient(private val config: OmniRouteConfig) {
     }
 
     suspend fun listModels(): Result<List<String>> = withContext(Dispatchers.IO) {
+        fetchModelEntries(configuredOnly = false).map { list -> list.map { it.get("id").asString }.distinct().sorted() }
+    }
+
+    /**
+     * Modèles utilisables avec catégorie Pro/Gratuit. `configuredOnly=true` demande à OmniRoute
+     * de ne garder que les modèles couverts par un compte réellement connecté.
+     */
+    suspend fun listModelInfo(
+        freeCatalog: FreeModelCatalog,
+        configuredOnly: Boolean = true
+    ): Result<List<ModelInfo>> = withContext(Dispatchers.IO) {
+        fetchModelEntries(configuredOnly).map { entries -> toModelInfo(entries, freeCatalog) }
+    }
+
+    private fun fetchModelEntries(configuredOnly: Boolean): Result<List<JsonObject>> =
         runCatching {
-            val request = Request.Builder().url("$baseUrl/v1/models").auth().get().build()
+            val url = "$baseUrl/v1/models" + if (configuredOnly) "?configuredOnly=true" else ""
+            val request = Request.Builder().url(url).auth().get().build()
             quickClient.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) throw httpError(response.code, body)
                 val data = JsonParser.parseString(body).asJsonObject.getAsJsonArray("data")
                     ?: JsonArray()
-                data.mapNotNull { it.asJsonObject.get("id")?.asString }.distinct().sorted()
+                data.filter { it.isJsonObject && it.asJsonObject.get("id")?.isJsonPrimitive == true }
+                    .map { it.asJsonObject }
             }
         }.recoverCatching { throw friendly(it) }
-    }
 
     /** Émet les fragments de texte de la réponse au fil du streaming SSE. */
     fun streamChat(model: String, messages: List<ChatMessage>): Flow<String> {
@@ -189,6 +205,30 @@ class OmniRouteClient(private val config: OmniRouteConfig) {
     }
 
     companion object {
+        /**
+         * OmniRoute annonce chaque modèle deux fois (alias court « kr/… » et doublon « kiro/… »
+         * dont `parent` pointe vers l'alias) : seuls les alias sont gardés.
+         */
+        fun toModelInfo(entries: List<JsonObject>, freeCatalog: FreeModelCatalog): List<ModelInfo> {
+            val ids = entries.map { it.get("id").asString }.toSet()
+            return entries.filter { e ->
+                val parent = e.get("parent")?.takeIf { it.isJsonPrimitive }?.asString
+                parent == null || parent !in ids
+            }.map { e ->
+                val id = e.get("id").asString
+                val owner = e.get("owned_by")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?: id.substringBefore('/', "autre")
+                val root = e.get("root")?.takeIf { it.isJsonPrimitive }?.asString ?: id.substringAfter('/')
+                val tier = when {
+                    owner == "combo" -> ModelTier.COMBO
+                    e.get("free")?.takeIf { it.isJsonPrimitive }?.asBoolean == true -> ModelTier.FREE
+                    freeCatalog.isFree(owner, root, id) -> ModelTier.FREE
+                    else -> ModelTier.PRO
+                }
+                ModelInfo(id = id, provider = owner, upstreamId = root, tier = tier)
+            }.distinctBy { it.id }
+        }
+
         private val JSON = "application/json".toMediaType()
 
         private val quickClient = OkHttpClient.Builder()

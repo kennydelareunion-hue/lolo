@@ -77,7 +77,9 @@ fun DashboardScreen(
                     detail = when {
                         status.omniRouteConnected && status.omniRouteModelCount == 0 ->
                             "Aucun modèle : connectez un fournisseur (Kiro…) dans l'onglet OmniRoute."
-                        status.omniRouteConnected -> "${status.omniRouteModelCount} modèle(s) disponible(s)"
+                        status.omniRouteConnected ->
+                            "${status.omniRouteModelCount} modèle(s) connecté(s) : ${status.omniRouteProCount} Pro · " +
+                                "${status.omniRouteFreeCount} gratuit(s)"
                         status.omniRouteAuthRequired ->
                             "OmniRoute tourne. Créez une clé API (onglet OmniRoute › icône clé) et collez-la dans Réglages."
                         else -> status.omniRouteMessage
@@ -181,14 +183,18 @@ fun QuickActionsGrid(onNavigate: (String) -> Unit = {}) {
         QuickAction("Terminal", Icons.Default.Terminal, Color(0xFF9C27B0), "terminal"),
         QuickAction("Compilation", Icons.Default.Build, Color(0xFFF44336), "build"),
         QuickAction("Sessions", Icons.Default.History, Color(0xFF00BCD4), "sessions"),
-        QuickAction("Réglages", Icons.Default.Settings, Color(0xFF607D8B), "settings")
+        QuickAction("Réglages", Icons.Default.Settings, Color(0xFF607D8B), "settings"),
+        QuickAction("Hoplite", Icons.Default.OpenInBrowser, Color(0xFF00897B), HOPLITE_ROUTE)
     )
+    val context = LocalContext.current
     // Grille non paresseuse : elle vit dans une colonne défilante.
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         actions.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { action ->
-                    QuickActionCard(action, Modifier.weight(1f)) { onNavigate(action.route) }
+                    QuickActionCard(action, Modifier.weight(1f)) {
+                        if (action.route == HOPLITE_ROUTE) openHoplite(context) else onNavigate(action.route)
+                    }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -215,6 +221,18 @@ fun QuickActionCard(action: QuickAction, modifier: Modifier = Modifier, onClick:
             Spacer(modifier = Modifier.height(6.dp))
             Text(action.title, style = MaterialTheme.typography.bodyMedium, color = action.color, maxLines = 1)
         }
+    }
+}
+
+private const val HOPLITE_ROUTE = "external:hoplite"
+
+/** Ouvre Hoplite dans le navigateur : la connexion Google/GitHub y fonctionne, contrairement à une WebView. */
+private fun openHoplite(context: android.content.Context) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://app.hoplite.sh"))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 }
 

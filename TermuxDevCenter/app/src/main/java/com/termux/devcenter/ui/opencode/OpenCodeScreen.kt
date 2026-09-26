@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Refresh
@@ -36,13 +37,28 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
     val mcpStatus by viewModel.mcpStatus.collectAsState()
     val pendingTool by viewModel.pendingTool.collectAsState()
     var promptText by remember { mutableStateOf("") }
-    var modelMenuOpen by remember { mutableStateOf(false) }
+    var modelPickerOpen by remember { mutableStateOf(false) }
+    val favorites by viewModel.favorites.collectAsState()
+    val connectedOnly by viewModel.connectedOnly.collectAsState()
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
         if (messages.isNotEmpty()) {
             listState.scrollToItem(messages.size - 1, Int.MAX_VALUE / 2)
         }
+    }
+
+    if (modelPickerOpen) {
+        ModelPickerDialog(
+            models = models,
+            selected = selectedModel,
+            favorites = favorites,
+            connectedOnly = connectedOnly,
+            onConnectedOnlyChange = viewModel::setConnectedOnly,
+            onToggleFavorite = viewModel::toggleFavorite,
+            onSelect = viewModel::selectModel,
+            onDismiss = { modelPickerOpen = false }
+        )
     }
 
     pendingTool?.let { pending ->
@@ -79,33 +95,27 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ExposedDropdownMenuBox(
-                expanded = modelMenuOpen,
-                onExpandedChange = { modelMenuOpen = it && models.isNotEmpty() },
+            val current = models.firstOrNull { it.id == selectedModel }
+            OutlinedCard(
+                onClick = { if (models.isNotEmpty()) modelPickerOpen = true },
                 modifier = Modifier.weight(1f)
             ) {
-                OutlinedTextField(
-                    value = selectedModel.ifBlank { if (loadingModels) "Chargement…" else "Aucun modèle" },
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    label = { Text("Modèle OmniRoute") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelMenuOpen) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = modelMenuOpen,
-                    onDismissRequest = { modelMenuOpen = false }
-                ) {
-                    models.forEach { model ->
-                        DropdownMenuItem(
-                            text = { Text(model) },
-                            onClick = {
-                                viewModel.selectModel(model)
-                                modelMenuOpen = false
-                            }
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            current?.displayName ?: selectedModel.ifBlank { if (loadingModels) "Chargement…" else "Aucun modèle" },
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            current?.let { "via ${it.provider}" } ?: "Touchez pour choisir",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    current?.let { TierBadge(it.tier) }
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Changer de modèle")
                 }
             }
             IconButton(onClick = { viewModel.refreshModels(); viewModel.refreshTools() }, enabled = !loadingModels) {
@@ -224,15 +234,22 @@ fun MessageBubble(message: OpenCodeMessage) {
             )
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = when {
-                        isUser -> "Vous"
-                        isTool -> "Omni-Exec"
-                        else -> "Assistant"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = when {
+                            isUser -> "Vous"
+                            isTool -> "Omni-Exec"
+                            else -> message.model?.let { "${it.name} · ${it.provider}" } ?: "Assistant"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    message.model?.let {
+                        Spacer(Modifier.width(6.dp))
+                        TierBadge(if (it.free) com.termux.devcenter.data.omniroute.ModelTier.FREE else com.termux.devcenter.data.omniroute.ModelTier.PRO)
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 SelectionContainer {
                     Text(

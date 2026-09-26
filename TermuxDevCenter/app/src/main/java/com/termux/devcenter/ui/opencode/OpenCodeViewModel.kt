@@ -10,7 +10,12 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.termux.devcenter.data.mcp.McpClient
 import com.termux.devcenter.data.mcp.McpTool
+import com.termux.devcenter.data.model.ModelLabel
 import com.termux.devcenter.data.model.OpenCodeMessage
+import com.termux.devcenter.data.omniroute.FreeModelCatalog
+import com.termux.devcenter.data.omniroute.ModelInfo
+import com.termux.devcenter.data.omniroute.ModelSelection
+import com.termux.devcenter.data.omniroute.ModelTier
 import com.termux.devcenter.data.omniroute.ChatEvent
 import com.termux.devcenter.data.omniroute.OmniRouteClient
 import com.termux.devcenter.data.omniroute.OmniRouteConfig
@@ -20,6 +25,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -48,8 +55,16 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
 
-    private val _models = MutableStateFlow<List<String>>(emptyList())
-    val models: StateFlow<List<String>> = _models.asStateFlow()
+    private val freeCatalog = FreeModelCatalog.load(application)
+
+    private val _models = MutableStateFlow<List<ModelInfo>>(emptyList())
+    val models: StateFlow<List<ModelInfo>> = _models.asStateFlow()
+
+    val favorites: StateFlow<Set<String>> = settings.config.map { it.favorites }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, OmniRouteConfig().favorites)
+
+    val connectedOnly: StateFlow<Boolean> = settings.config.map { it.connectedOnly }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     private val _selectedModel = MutableStateFlow("")
     val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
@@ -77,7 +92,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
     init {
         viewModelScope.launch {
-            settings.config.map { it.normalizedBaseUrl to it.apiKey }.distinctUntilChanged()
+            settings.config.map { Triple(it.normalizedBaseUrl, it.apiKey, it.connectedOnly) }.distinctUntilChanged()
                 .collect { refreshModels() }
         }
         viewModelScope.launch {
@@ -90,13 +105,16 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _loadingModels.value = true
             val config = settings.current()
-            OmniRouteClient(config).listModels().fold(
+            OmniRouteClient(config).listModelInfo(freeCatalog, config.connectedOnly).fold(
                 onSuccess = { list ->
                     _models.value = list
                     _error.value = if (list.isEmpty()) {
-                        "OmniRoute ne propose aucun modèle : connectez un fournisseur dans l'onglet OmniRoute."
+                        if (config.connectedOnly) "Aucun modèle couvert par un compte connecté. Connectez un fournisseur " +
+                            "dans l'onglet OmniRoute, ou affichez tous les modèles dans le sélecteur."
+                        else "OmniRoute ne propose aucun modèle : connectez un fournisseur dans l'onglet OmniRoute."
                     } else null
-                    val chosen = config.model.takeIf { it in list } ?: pickDefault(list)
+                    val chosen = config.model.takeIf { id -> list.any { it.id == id } }
+                        ?: ModelSelection.pickDefault(list)?.id.orEmpty()
                     _selectedModel.value = chosen
                     if (chosen != config.model) settings.setModel(chosen)
                 },
@@ -127,14 +145,26 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun pickDefault(list: List<String>): String =
-        list.firstOrNull { it.contains("claude", true) && it.contains("sonnet", true) }
-            ?: list.firstOrNull { it.contains("claude", true) }
-            ?: list.firstOrNull().orEmpty()
-
     fun selectModel(model: String) {
         _selectedModel.value = model
         viewModelScope.launch { settings.setModel(model) }
+    }
+
+    fun toggleFavorite(model: String) {
+        viewModelScope.launch { settings.toggleFavorite(model) }
+    }
+
+    fun setConnectedOnly(value: Boolean) {
+        viewModelScope.launch { settings.setConnectedOnly(value) }
+    }
+
+    private fun labelFor(modelId: String): ModelLabel {
+        val info = _models.value.firstOrNull { it.id == modelId }
+        return ModelLabel(
+            name = info?.displayName ?: modelId,
+            provider = info?.provider ?: modelId.substringBefore('/', "?"),
+            free = info?.tier == ModelTier.FREE
+        )
     }
 
     fun sendPrompt(prompt: String) {
@@ -173,7 +203,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         val toolsJson = toOpenAiTools(tools)
 
         repeat(MAX_TOOL_ROUNDS) {
-            addUi("assistant", "")
+            addUi("assistant", "", labelFor(model))
             val text = StringBuilder()
             var calls = emptyList<ToolCall>()
             client.streamCompletion(model, requestMessages(tools.isNotEmpty()), toolsJson).collect { event ->
@@ -298,8 +328,8 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         addProperty("content", content)
     }
 
-    private fun addUi(role: String, content: String) {
-        _messages.value = _messages.value + OpenCodeMessage(role = role, content = content)
+    private fun addUi(role: String, content: String, model: ModelLabel? = null) {
+        _messages.value = _messages.value + OpenCodeMessage(role = role, content = content, model = model)
     }
 
     private fun updateLastUi(content: String) {

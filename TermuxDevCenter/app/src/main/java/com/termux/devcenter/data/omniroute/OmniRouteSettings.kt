@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -17,7 +18,10 @@ data class OmniRouteConfig(
     val mcpUrl: String = DEFAULT_MCP_URL,
     val mcpEnabled: Boolean = true,
     val confirmCommands: Boolean = true,
-    val mcpStartCommand: String = DEFAULT_MCP_START_COMMAND
+    val mcpStartCommand: String = DEFAULT_MCP_START_COMMAND,
+    val favorites: Set<String> = setOf(ModelSelection.PREFERRED_MODEL),
+    /** N'afficher que les modèles couverts par un compte connecté. */
+    val connectedOnly: Boolean = true
 ) {
     /** URL sans slash final, utilisable pour construire les endpoints. */
     val normalizedBaseUrl: String
@@ -44,6 +48,8 @@ class OmniRouteSettings(private val context: Context) {
         val MCP_ENABLED = booleanPreferencesKey("mcp_enabled")
         val CONFIRM_COMMANDS = booleanPreferencesKey("confirm_commands")
         val MCP_START_COMMAND = stringPreferencesKey("mcp_start_command")
+        val FAVORITES = stringSetPreferencesKey("favorites")
+        val CONNECTED_ONLY = booleanPreferencesKey("connected_only")
     }
 
     val config: Flow<OmniRouteConfig> = context.omniDataStore.data.map { p ->
@@ -56,7 +62,9 @@ class OmniRouteSettings(private val context: Context) {
             mcpUrl = p[Keys.MCP_URL] ?: d.mcpUrl,
             mcpEnabled = p[Keys.MCP_ENABLED] ?: d.mcpEnabled,
             confirmCommands = p[Keys.CONFIRM_COMMANDS] ?: d.confirmCommands,
-            mcpStartCommand = p[Keys.MCP_START_COMMAND] ?: d.mcpStartCommand
+            mcpStartCommand = p[Keys.MCP_START_COMMAND] ?: d.mcpStartCommand,
+            favorites = p[Keys.FAVORITES] ?: d.favorites,
+            connectedOnly = p[Keys.CONNECTED_ONLY] ?: d.connectedOnly
         )
     }
 
@@ -76,5 +84,16 @@ class OmniRouteSettings(private val context: Context) {
 
     suspend fun setModel(model: String) {
         context.omniDataStore.edit { it[Keys.MODEL] = model }
+    }
+
+    suspend fun toggleFavorite(model: String) {
+        context.omniDataStore.edit {
+            val current = it[Keys.FAVORITES] ?: OmniRouteConfig().favorites
+            it[Keys.FAVORITES] = if (model in current) current - model else current + model
+        }
+    }
+
+    suspend fun setConnectedOnly(value: Boolean) {
+        context.omniDataStore.edit { it[Keys.CONNECTED_ONLY] = value }
     }
 }

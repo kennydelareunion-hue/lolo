@@ -46,3 +46,14 @@ Chaque commande demandée par Claude affiche une fenêtre **Exécuter / Refuser 
 | Omni-Exec a répondu 404 / réponse inattendue | Mauvais chemin : corrigez l'URL MCP (étape 3.2) |
 | Omni-Exec a répondu 400 : Missing sessionId | Corrigé en 1.3.0 (transport SSE détecté automatiquement) : mettez l'app à jour |
 | Journal Omni-Exec : EADDRINUSE | Omni-Exec tourne déjà, rien à faire. Pour le relancer : `pkill -f http-server.js` puis Démarrer |
+
+## Choisir le modèle (Chat IA)
+
+Touchez la carte du modèle en haut du chat :
+- onglets **★ Favoris / Pro / Gratuit / Tous**, recherche (ex. `claude kiro`), modèles regroupés par fournisseur ;
+- « Seulement mes comptes connectés » (activé par défaut) masque les modèles sans compte actif ;
+- **Claude Sonnet 4.5 via Kiro** (`kr/claude-sonnet-4.5`) est en favori et choisi par défaut ;
+- chaque réponse indique le modèle, le fournisseur et le badge PRO/GRATUIT.
+
+« Gratuit » vient du catalogue officiel d'OmniRoute (`assets/free_models.json`) ;
+pour le mettre à jour : `python3 scripts/update_free_models.py`.

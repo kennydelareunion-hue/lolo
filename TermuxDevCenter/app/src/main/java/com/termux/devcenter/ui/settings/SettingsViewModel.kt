@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.termux.devcenter.data.mcp.McpClient
+import com.termux.devcenter.data.omniroute.FreeModelCatalog
+import com.termux.devcenter.data.omniroute.ModelSelection
+import com.termux.devcenter.data.omniroute.ModelTier
 import com.termux.devcenter.data.omniroute.OmniRouteClient
 import com.termux.devcenter.data.omniroute.OmniRouteConfig
 import com.termux.devcenter.data.omniroute.OmniRouteSettings
@@ -33,14 +36,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             omniSettings.save(config)
             _omniConfig.value = config
             _testResult.value = "Test en cours…"
-            val models = async { OmniRouteClient(config).listModels() }
+            val models = async {
+                OmniRouteClient(config).listModelInfo(FreeModelCatalog.load(getApplication()), config.connectedOnly)
+            }
             val tools = async { if (config.mcpEnabled) McpClient.forUrl(config.mcpUrl).listTools() else null }
 
             val omniLine = models.await().fold(
                 onSuccess = { list ->
                     if (list.isEmpty()) "✓ OmniRoute connecté, mais aucun modèle : ajoutez un fournisseur."
-                    else "✓ OmniRoute : ${list.size} modèle(s) — ${list.take(4).joinToString()}" +
-                        if (list.size > 4) "…" else ""
+                    else "✓ OmniRoute : ${list.size} modèle(s) connecté(s) — " +
+                        "${list.count { it.tier == ModelTier.PRO }} Pro, ${list.count { it.tier == ModelTier.FREE }} gratuit(s)" +
+                        (list.firstOrNull { it.id == ModelSelection.PREFERRED_MODEL }?.let { "\n✓ Claude Sonnet 4.5 via Kiro disponible" } ?: "")
                 },
                 onFailure = { "✗ ${it.message}" }
             )
