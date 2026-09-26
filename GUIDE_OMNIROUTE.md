@@ -68,3 +68,16 @@ Par défaut seul **kiro** est coché s'il existe (sinon tout sauf les fournisseu
 Réglages › **Hoplite** : collez votre clé `hop_…` (hoplite.sh › Settings › Account › API keys), enregistrez, choisissez le projet.
 Onglet **Hoplite** du sélecteur : chaque conversation crée un thread Hoplite (agent + sandbox, crédits Hoplite) ;
 la réponse arrive en quelques minutes, avec un lien vers le thread. Si l'agent attend une approbation, ouvrez le lien.
+
+## Dictée vocale, fichiers et historique (Chat IA)
+
+- 🎤 **Micro** : dictée continue ; les pauses ne coupent pas l'enregistrement (le moteur Android est relancé
+  automatiquement après chaque silence). « Terminer » insère le texte pour le relire, « Envoyer » l'envoie directement.
+  Utilise la reconnaissance vocale Google du téléphone (connexion internet selon la langue).
+- 📎 **Trombone** : tout type de fichier (10 max). Images → envoyées au modèle (redimensionnées) ; fichiers texte/code →
+  contenu inclus ; ZIP → liste + fichiers texte inclus ; autres (PDF, APK…) → copie dans
+  `Téléchargements/TermuxDevCenter/` que Claude peut ouvrir via Omni-Exec (`~/storage/downloads/TermuxDevCenter/`,
+  après `termux-setup-storage`). Les modèles Hoplite reçoivent le texte mais pas les images.
+- 🕘 **Historique** (icône en haut de l'app, dans Chat IA et sur l'Accueil) : chaque conversation est enregistrée avec
+  son modèle et sa mémoire ; un appui la rouvre et la suite de la discussion reprend là où elle s'était arrêtée.
+  Chat IA rouvre automatiquement la dernière conversation. « Nouvelle conversation » garde l'ancienne dans l'historique.

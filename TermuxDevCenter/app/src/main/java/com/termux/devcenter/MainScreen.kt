@@ -21,6 +21,7 @@ import com.termux.devcenter.ui.build.BuildScreen
 import com.termux.devcenter.ui.sessions.SessionsScreen
 import com.termux.devcenter.ui.settings.SettingsScreen
 import com.termux.devcenter.ui.omniroute.OmniRouteScreen
+import com.termux.devcenter.ui.history.HistoryScreen
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Dashboard : Screen("dashboard", "Accueil", Icons.Default.Home)
@@ -58,6 +59,11 @@ fun MainScreen() {
         topBar = {
             TopAppBar(
                 title = { Text("Termux Dev Center") },
+                actions = {
+                    IconButton(onClick = { navigate("history") }) {
+                        Icon(Icons.Default.History, contentDescription = "Historique des conversations")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -95,7 +101,8 @@ fun MainScreen() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Dashboard.route) { DashboardScreen(onNavigate = navigate) }
-            composable(Screen.OpenCode.route) { OpenCodeScreen() }
+            composable(Screen.OpenCode.route) { OpenCodeScreen(onOpenHistory = { navigate("history") }) }
+            composable("history") { HistoryScreen(onOpenChat = { navigate(Screen.OpenCode.route) }) }
             composable(Screen.OmniRoute.route) { OmniRouteScreen() }
             composable(Screen.Projects.route) { ProjectsScreen() }
             composable(Screen.Files.route) { FilesScreen() }

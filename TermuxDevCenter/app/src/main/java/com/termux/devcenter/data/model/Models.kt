@@ -67,7 +67,9 @@ data class OpenCodeMessage(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     /** Modèle ayant produit la réponse, affiché pour savoir à qui on parle. */
-    val model: ModelLabel? = null
+    val model: ModelLabel? = null,
+    /** Noms des pièces jointes envoyées avec ce message. */
+    val attachments: List<String>? = null
 )
 
 data class ModelLabel(

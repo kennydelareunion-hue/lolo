@@ -18,9 +18,15 @@
 
     <!-- Démarrage d'OmniRoute dans Termux sans ouvrir le terminal -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Dictée vocale dans le Chat IA -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
         <package android:name="com.termux" />
+        <!-- Visibilité du service de reconnaissance vocale (Android 11+) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application

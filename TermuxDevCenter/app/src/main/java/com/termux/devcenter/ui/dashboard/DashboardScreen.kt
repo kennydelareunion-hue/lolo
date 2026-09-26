@@ -177,6 +177,7 @@ private fun ServiceRow(
 fun QuickActionsGrid(onNavigate: (String) -> Unit = {}) {
     val actions = listOf(
         QuickAction("Chat IA", Icons.Default.Chat, Color(0xFF2196F3), "opencode"),
+        QuickAction("Historique", Icons.Default.History, Color(0xFF5E35B1), "history"),
         QuickAction("OmniRoute", Icons.Default.Hub, Color(0xFF3F51B5), "omniroute"),
         QuickAction("Projets", Icons.Default.Folder, Color(0xFF4CAF50), "projects"),
         QuickAction("Fichiers", Icons.Default.InsertDriveFile, Color(0xFFFF9800), "files"),

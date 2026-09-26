@@ -1,6 +1,19 @@
 package com.termux.devcenter.ui.opencode
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.termux.devcenter.data.voice.VoiceDictation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -26,7 +39,7 @@ import com.termux.devcenter.data.model.OpenCodeMessage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
+fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel(), onOpenHistory: () -> Unit = {}) {
     val messages by viewModel.messages.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
     val models by viewModel.models.collectAsState()
@@ -44,6 +57,25 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
     val enabledProviders by viewModel.enabledProviders.collectAsState()
     val hopliteStatus by viewModel.hopliteStatus.collectAsState()
     val listState = rememberLazyListState()
+    val attachments by viewModel.pendingAttachments.collectAsState()
+    val attachmentBusy by viewModel.attachmentBusy.collectAsState()
+    val voiceState by viewModel.voice.state.collectAsState()
+    val context = LocalContext.current
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        viewModel.addAttachments(uris)
+    }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.voice.start()
+    }
+    val startVoice = {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            viewModel.voice.start()
+        } else {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    DisposableEffect(Unit) { onDispose { viewModel.voice.cancel() } }
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
         if (messages.isNotEmpty()) {
@@ -128,8 +160,11 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
             IconButton(onClick = { viewModel.refreshModels(); viewModel.refreshTools() }, enabled = !loadingModels) {
                 Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir")
             }
+            IconButton(onClick = onOpenHistory) {
+                Icon(Icons.Default.History, contentDescription = "Historique des conversations")
+            }
             IconButton(onClick = { viewModel.clearConversation() }, enabled = messages.isNotEmpty()) {
-                Icon(Icons.Default.DeleteSweep, contentDescription = "Nouvelle conversation")
+                Icon(Icons.Default.AddComment, contentDescription = "Nouvelle conversation")
             }
         }
 
@@ -189,35 +224,78 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = promptText,
-                onValueChange = { promptText = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Demandez à Claude…") },
-                enabled = !isProcessing,
-                minLines = 1,
-                maxLines = 5
-            )
-            if (isProcessing) {
-                IconButton(onClick = { viewModel.stopProcessing() }) {
-                    Icon(Icons.Default.Stop, contentDescription = "Arrêter")
+        voiceState.error?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+
+        if (voiceState.active) {
+            VoiceRecorderPanel(
+                state = voiceState,
+                onCancel = { viewModel.voice.cancel() },
+                onInsert = { promptText = VoiceDictation.joinText(promptText, viewModel.voice.finish()) },
+                onSend = {
+                    val text = VoiceDictation.joinText(promptText, viewModel.voice.finish())
+                    if (text.isNotBlank() && !isProcessing) {
+                        viewModel.sendPrompt(text)
+                        promptText = ""
+                    } else {
+                        promptText = text
+                    }
                 }
-            } else {
-                Button(
-                    onClick = {
-                        if (promptText.isNotBlank()) {
+            )
+        } else {
+            if (attachments.isNotEmpty() || attachmentBusy) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    attachments.forEachIndexed { index, att ->
+                        InputChip(
+                            selected = false,
+                            onClick = { viewModel.removeAttachment(index) },
+                            label = { Text(att.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Retirer", modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                    if (attachmentBusy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { filePicker.launch(arrayOf("*/*")) }, enabled = !isProcessing) {
+                    Icon(Icons.Default.AttachFile, contentDescription = "Joindre des fichiers")
+                }
+                OutlinedTextField(
+                    value = promptText,
+                    onValueChange = { promptText = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Demandez à Claude…") },
+                    enabled = !isProcessing,
+                    minLines = 1,
+                    maxLines = 5
+                )
+                if (isProcessing) {
+                    IconButton(onClick = { viewModel.stopProcessing() }) {
+                        Icon(Icons.Default.Stop, contentDescription = "Arrêter")
+                    }
+                } else {
+                    IconButton(onClick = startVoice) {
+                        Icon(Icons.Default.Mic, contentDescription = "Dicter un message")
+                    }
+                    FilledIconButton(
+                        onClick = {
                             viewModel.sendPrompt(promptText.trim())
                             promptText = ""
-                        }
-                    },
-                    enabled = promptText.isNotBlank()
-                ) {
-                    Icon(Icons.Default.Send, contentDescription = "Envoyer")
+                        },
+                        enabled = (promptText.isNotBlank() || attachments.isNotEmpty()) && !attachmentBusy
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Envoyer")
+                    }
                 }
             }
         }
@@ -269,6 +347,14 @@ fun MessageBubble(message: OpenCodeMessage) {
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
+                message.attachments?.takeIf { it.isNotEmpty() }?.let { names ->
+                    Text(
+                        names.joinToString("\n"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
                 SelectionContainer {
                     Text(
                         text = message.content.ifEmpty { "…" },

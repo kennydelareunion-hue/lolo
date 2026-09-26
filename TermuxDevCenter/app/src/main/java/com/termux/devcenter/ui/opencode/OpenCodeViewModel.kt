@@ -1,13 +1,22 @@
 package com.termux.devcenter.ui.opencode
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonPrimitive
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.termux.devcenter.data.attachments.Attachment
+import com.termux.devcenter.data.attachments.AttachmentProcessor
+import com.termux.devcenter.data.history.ChatHistoryStore
+import com.termux.devcenter.data.history.ChatNavigation
+import com.termux.devcenter.data.history.ChatRecord
+import com.termux.devcenter.data.voice.VoiceDictation
 import com.termux.devcenter.data.hoplite.HopliteClient
 import com.termux.devcenter.data.hoplite.HopliteException
 import com.termux.devcenter.data.mcp.McpClient
@@ -26,6 +35,8 @@ import com.termux.devcenter.data.omniroute.ToolCall
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -114,7 +125,29 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     private var streamJob: Job? = null
     private val prettyGson = GsonBuilder().setPrettyPrinting().create()
 
+    private val history = ChatHistoryStore.get(application)
+    /** Conversation en cours dans l'historique (`null` tant qu'aucun message n'est envoyé). */
+    private var chatId: String? = null
+    private var chatCreatedAt = 0L
+    private var lastModelId: String? = null
+
+    private val attachmentProcessor = AttachmentProcessor(application)
+    private val _pendingAttachments = MutableStateFlow<List<Attachment>>(emptyList())
+    val pendingAttachments: StateFlow<List<Attachment>> = _pendingAttachments.asStateFlow()
+    private val _attachmentBusy = MutableStateFlow(false)
+    val attachmentBusy: StateFlow<Boolean> = _attachmentBusy.asStateFlow()
+
+    val voice = VoiceDictation(application)
+
     init {
+        viewModelScope.launch {
+            // Reprend la dernière conversation, sauf si l'historique en demande une autre.
+            if (ChatNavigation.openRequest.value == null) history.currentId()?.let { openChat(it) }
+            ChatNavigation.openRequest.filterNotNull().collect { request ->
+                ChatNavigation.openRequest.value = null
+                if (request == ChatNavigation.NEW_CHAT) resetConversation() else openChat(request)
+            }
+        }
         viewModelScope.launch {
             settings.config.map { listOf(it.normalizedBaseUrl, it.apiKey, it.connectedOnly, it.hopliteApiKey) }
                 .distinctUntilChanged()
@@ -152,7 +185,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
                     "ou connectez un fournisseur dans l'onglet OmniRoute."
             } else null
             if (all.isNotEmpty()) {
-                val chosen = config.model.takeIf { id -> visible.any { it.id == id } }
+                val chosen = config.model.takeIf { id -> all.any { it.id == id } }
                     ?: ModelSelection.pickDefault(visible)?.id.orEmpty()
                 _selectedModel.value = chosen
                 if (chosen != config.model) settings.setModel(chosen)
@@ -217,21 +250,58 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    fun addAttachments(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            _attachmentBusy.value = true
+            for (uri in uris) {
+                if (_pendingAttachments.value.size >= MAX_ATTACHMENTS) {
+                    _error.value = "$MAX_ATTACHMENTS pièces jointes maximum par message."
+                    break
+                }
+                attachmentProcessor.process(uri).fold(
+                    onSuccess = { _pendingAttachments.value = _pendingAttachments.value + it },
+                    onFailure = { _error.value = "Pièce jointe illisible : ${it.message}" }
+                )
+            }
+            _attachmentBusy.value = false
+        }
+    }
+
+    fun removeAttachment(index: Int) {
+        _pendingAttachments.value = _pendingAttachments.value.filterIndexed { i, _ -> i != index }
+    }
+
     fun sendPrompt(prompt: String) {
         val model = _selectedModel.value
+        val attachments = _pendingAttachments.value
+        if (prompt.isBlank() && attachments.isEmpty()) return
         if (model.isBlank()) {
             _error.value = "Aucun modèle sélectionné. Vérifiez la connexion à OmniRoute."
             refreshModels()
             return
         }
         _error.value = null
-        conversation.add(message("user", prompt))
-        addUi("user", prompt)
+        val isHoplite = model.startsWith(ModelInfo.HOPLITE_PREFIX)
+        val text = prompt.ifBlank { "Voici des fichiers joints." } +
+            attachments.joinToString("") { it.toPromptText(imagesSupported = !isHoplite) }
+        conversation.add(JsonObject().apply {
+            addProperty("role", "user")
+            add("content", buildUserContent(text, if (isHoplite) emptyList() else attachments))
+        })
+        addUi("user", prompt.ifBlank { "(pièces jointes)" }, attachments = attachments.map { it.label }.ifEmpty { null })
+        _pendingAttachments.value = emptyList()
+        lastModelId = model
+        if (chatId == null) {
+            chatId = ChatHistoryStore.newId()
+            chatCreatedAt = System.currentTimeMillis()
+        }
+        persist()
         _isProcessing.value = true
 
         streamJob = viewModelScope.launch {
             try {
-                if (model.startsWith(ModelInfo.HOPLITE_PREFIX)) runHoplite(model, prompt) else runAgentLoop(model)
+                if (isHoplite) runHoplite(model, text) else runAgentLoop(model)
             } catch (e: CancellationException) {
                 closeDanglingTurn("(interrompu)")
                 throw e
@@ -242,8 +312,86 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
                 _isProcessing.value = false
                 _pendingTool.value?.decision?.cancel()
                 _pendingTool.value = null
+                persist()
             }
         }
+    }
+
+    /** Texte seul, ou parties OpenAI (texte + images) quand des images sont jointes. */
+    private fun buildUserContent(text: String, attachments: List<Attachment>): JsonElement {
+        val images = attachments.mapNotNull { it.imageDataUrl }
+        if (images.isEmpty()) return JsonPrimitive(text)
+        return JsonArray().apply {
+            add(JsonObject().apply { addProperty("type", "text"); addProperty("text", text) })
+            images.forEach { url ->
+                add(JsonObject().apply {
+                    addProperty("type", "image_url")
+                    add("image_url", JsonObject().apply { addProperty("url", url) })
+                })
+            }
+        }
+    }
+
+    /** Enregistre la conversation (affichage + mémoire + modèle) dans l'historique. */
+    private fun persist() {
+        val id = chatId ?: return
+        if (_messages.value.isEmpty()) return
+        val modelId = lastModelId ?: _selectedModel.value
+        val label = labelFor(modelId)
+        val record = ChatRecord(
+            id = id,
+            title = ChatHistoryStore.titleFrom(_messages.value.firstOrNull { it.role == "user" }?.content.orEmpty()),
+            modelId = modelId,
+            modelName = label.name,
+            provider = label.provider,
+            createdAt = chatCreatedAt,
+            updatedAt = System.currentTimeMillis(),
+            messages = _messages.value,
+            conversation = conversation.toString(),
+            hopliteThreadId = hopliteThreadId
+        )
+        viewModelScope.launch {
+            history.save(record)
+            history.setCurrent(id)
+        }
+    }
+
+    private suspend fun openChat(id: String) {
+        streamJob?.cancelAndJoin()
+        val record = history.load(id) ?: run {
+            _error.value = "Conversation introuvable."
+            return
+        }
+        chatId = record.id
+        chatCreatedAt = record.createdAt
+        _messages.value = record.messages.orEmpty()
+        conversation = runCatching { JsonParser.parseString(record.conversation ?: "[]").asJsonArray }
+            .getOrDefault(JsonArray())
+        hopliteThreadId = record.hopliteThreadId
+        autoApprove = false
+        _pendingAttachments.value = emptyList()
+        _error.value = null
+        lastModelId = record.modelId.takeIf { it.isNotBlank() }
+        lastModelId?.let { selectModel(it) }
+        history.setCurrent(record.id)
+    }
+
+    private suspend fun resetConversation() {
+        streamJob?.cancelAndJoin()
+        chatId = null
+        lastModelId = null
+        _messages.value = emptyList()
+        conversation = JsonArray()
+        hopliteThreadId = null
+        autoApprove = false
+        _pendingAttachments.value = emptyList()
+        _error.value = null
+        history.setCurrent(null)
+    }
+
+    override fun onCleared() {
+        voice.release()
+        super.onCleared()
     }
 
     /**
@@ -444,8 +592,8 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         addProperty("content", content)
     }
 
-    private fun addUi(role: String, content: String, model: ModelLabel? = null) {
-        _messages.value = _messages.value + OpenCodeMessage(role = role, content = content, model = model)
+    private fun addUi(role: String, content: String, model: ModelLabel? = null, attachments: List<String>? = null) {
+        _messages.value = _messages.value + OpenCodeMessage(role = role, content = content, model = model, attachments = attachments)
     }
 
     private fun updateLastUi(content: String) {
@@ -462,17 +610,14 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         streamJob?.cancel()
     }
 
+    /** Nouvelle conversation ; la précédente reste dans l'historique. */
     fun clearConversation() {
-        stopProcessing()
-        _messages.value = emptyList()
-        conversation = JsonArray()
-        hopliteThreadId = null
-        autoApprove = false
-        _error.value = null
+        viewModelScope.launch { resetConversation() }
     }
 
     companion object {
         private const val MAX_TOOL_ROUNDS = 15
+        private const val MAX_ATTACHMENTS = 10
         private const val HOPLITE_POLL_MS = 3_000L
         private const val HOPLITE_TIMEOUT_MS = 30 * 60_000L
         private const val UI_OUTPUT_LIMIT = 2_000
