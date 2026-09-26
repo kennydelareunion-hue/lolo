@@ -78,8 +78,8 @@ fun DashboardScreen(
                         status.omniRouteConnected && status.omniRouteModelCount == 0 ->
                             "Aucun modèle : connectez un fournisseur (Kiro…) dans l'onglet OmniRoute."
                         status.omniRouteConnected ->
-                            "${status.omniRouteModelCount} modèle(s) connecté(s) : ${status.omniRouteProCount} Pro · " +
-                                "${status.omniRouteFreeCount} gratuit(s)"
+                            "${status.omniRouteModelCount} modèle(s) affiché(s) : ${status.omniRouteProCount} Pro · " +
+                                "${status.omniRouteFreeCount} gratuit(s) — fournisseurs à choisir dans Chat IA"
                         status.omniRouteAuthRequired ->
                             "OmniRoute tourne. Créez une clé API (onglet OmniRoute › icône clé) et collez-la dans Réglages."
                         else -> status.omniRouteMessage

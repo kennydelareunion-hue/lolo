@@ -7,6 +7,7 @@ import com.termux.devcenter.data.api.BridgeApiClient
 import com.termux.devcenter.data.mcp.McpClient
 import com.termux.devcenter.data.model.ServerStatus
 import com.termux.devcenter.data.omniroute.FreeModelCatalog
+import com.termux.devcenter.data.omniroute.ModelSelection
 import com.termux.devcenter.data.omniroute.ModelTier
 import com.termux.devcenter.data.omniroute.OmniRouteClient
 import com.termux.devcenter.data.omniroute.OmniRouteException
@@ -52,6 +53,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             Triple(bridge.await(), omniRoute.await(), omniExec.await())
         }
         val modelError = models.exceptionOrNull()
+        val visibleModels = models.getOrNull()?.let { all ->
+            ModelSelection.filterEnabled(all, config.enabledProviders ?: ModelSelection.defaultProviders(all, freeCatalog))
+        }
         _serverStatus.value = ServerStatus(
             serverActive = bridgeOk,
             bridgeConnected = bridgeOk,
@@ -59,9 +63,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             omniExecToolCount = tools?.getOrNull()?.size ?: 0,
             omniExecMessage = if (tools == null) "Désactivé dans Réglages" else tools.exceptionOrNull()?.message,
             omniRouteConnected = models.isSuccess,
-            omniRouteModelCount = models.getOrNull()?.size ?: 0,
-            omniRouteProCount = models.getOrNull()?.count { it.tier == ModelTier.PRO } ?: 0,
-            omniRouteFreeCount = models.getOrNull()?.count { it.tier == ModelTier.FREE } ?: 0,
+            omniRouteModelCount = visibleModels?.size ?: 0,
+            omniRouteProCount = visibleModels?.count { it.tier == ModelTier.PRO } ?: 0,
+            omniRouteFreeCount = visibleModels?.count { it.tier == ModelTier.FREE } ?: 0,
             omniRouteMessage = modelError?.message,
             omniRouteAuthRequired = (modelError as? OmniRouteException)?.isAuthError == true,
             checked = true

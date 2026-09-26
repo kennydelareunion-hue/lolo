@@ -21,7 +21,11 @@ data class OmniRouteConfig(
     val mcpStartCommand: String = DEFAULT_MCP_START_COMMAND,
     val favorites: Set<String> = setOf(ModelSelection.PREFERRED_MODEL),
     /** N'afficher que les modèles couverts par un compte connecté. */
-    val connectedOnly: Boolean = true
+    val connectedOnly: Boolean = true,
+    /** Fournisseurs OmniRoute affichés ; `null` = pas encore choisi (Kiro par défaut). */
+    val enabledProviders: Set<String>? = null,
+    val hopliteApiKey: String = "",
+    val hopliteProjectId: String = ""
 ) {
     /** URL sans slash final, utilisable pour construire les endpoints. */
     val normalizedBaseUrl: String
@@ -50,6 +54,9 @@ class OmniRouteSettings(private val context: Context) {
         val MCP_START_COMMAND = stringPreferencesKey("mcp_start_command")
         val FAVORITES = stringSetPreferencesKey("favorites")
         val CONNECTED_ONLY = booleanPreferencesKey("connected_only")
+        val ENABLED_PROVIDERS = stringSetPreferencesKey("enabled_providers")
+        val HOPLITE_API_KEY = stringPreferencesKey("hoplite_api_key")
+        val HOPLITE_PROJECT_ID = stringPreferencesKey("hoplite_project_id")
     }
 
     val config: Flow<OmniRouteConfig> = context.omniDataStore.data.map { p ->
@@ -64,7 +71,10 @@ class OmniRouteSettings(private val context: Context) {
             confirmCommands = p[Keys.CONFIRM_COMMANDS] ?: d.confirmCommands,
             mcpStartCommand = p[Keys.MCP_START_COMMAND] ?: d.mcpStartCommand,
             favorites = p[Keys.FAVORITES] ?: d.favorites,
-            connectedOnly = p[Keys.CONNECTED_ONLY] ?: d.connectedOnly
+            connectedOnly = p[Keys.CONNECTED_ONLY] ?: d.connectedOnly,
+            enabledProviders = p[Keys.ENABLED_PROVIDERS],
+            hopliteApiKey = p[Keys.HOPLITE_API_KEY] ?: d.hopliteApiKey,
+            hopliteProjectId = p[Keys.HOPLITE_PROJECT_ID] ?: d.hopliteProjectId
         )
     }
 
@@ -79,6 +89,8 @@ class OmniRouteSettings(private val context: Context) {
             it[Keys.MCP_ENABLED] = config.mcpEnabled
             it[Keys.CONFIRM_COMMANDS] = config.confirmCommands
             it[Keys.MCP_START_COMMAND] = config.mcpStartCommand.trim()
+            it[Keys.HOPLITE_API_KEY] = config.hopliteApiKey.trim()
+            it[Keys.HOPLITE_PROJECT_ID] = config.hopliteProjectId.trim()
         }
     }
 
@@ -95,5 +107,9 @@ class OmniRouteSettings(private val context: Context) {
 
     suspend fun setConnectedOnly(value: Boolean) {
         context.omniDataStore.edit { it[Keys.CONNECTED_ONLY] = value }
+    }
+
+    suspend fun setEnabledProviders(providers: Set<String>) {
+        context.omniDataStore.edit { it[Keys.ENABLED_PROVIDERS] = providers }
     }
 }

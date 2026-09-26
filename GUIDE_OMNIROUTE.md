@@ -57,3 +57,14 @@ Touchez la carte du modèle en haut du chat :
 
 « Gratuit » vient du catalogue officiel d'OmniRoute (`assets/free_models.json`) ;
 pour le mettre à jour : `python3 scripts/update_free_models.py`.
+
+## Afficher seulement mes fournisseurs (ex. Kiro)
+
+Sélecteur de modèle › **Fournisseurs affichés** : cochez uniquement ceux que vous avez connectés.
+Par défaut seul **kiro** est coché s'il existe (sinon tout sauf les fournisseurs « sans clé » d'OmniRoute et les combos auto).
+
+## Modèles Hoplite
+
+Réglages › **Hoplite** : collez votre clé `hop_…` (hoplite.sh › Settings › Account › API keys), enregistrez, choisissez le projet.
+Onglet **Hoplite** du sélecteur : chaque conversation crée un thread Hoplite (agent + sandbox, crédits Hoplite) ;
+la réponse arrive en quelques minutes, avec un lien vers le thread. Si l'agent attend une approbation, ouvrez le lien.

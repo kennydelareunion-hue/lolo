@@ -8,6 +8,8 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.termux.devcenter.data.hoplite.HopliteClient
+import com.termux.devcenter.data.hoplite.HopliteException
 import com.termux.devcenter.data.mcp.McpClient
 import com.termux.devcenter.data.mcp.McpTool
 import com.termux.devcenter.data.model.ModelLabel
@@ -24,6 +26,9 @@ import com.termux.devcenter.data.omniroute.ToolCall
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -57,8 +62,25 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
     private val freeCatalog = FreeModelCatalog.load(application)
 
-    private val _models = MutableStateFlow<List<ModelInfo>>(emptyList())
-    val models: StateFlow<List<ModelInfo>> = _models.asStateFlow()
+    /** Tous les modèles connus (OmniRoute + Hoplite), avant filtre par fournisseur. */
+    private val _allModels = MutableStateFlow<List<ModelInfo>>(emptyList())
+
+    /** Fournisseurs OmniRoute affichés : choix de l'utilisateur, sinon Kiro par défaut. */
+    val enabledProviders: StateFlow<Set<String>> = combine(_allModels, settings.config) { all, config ->
+        config.enabledProviders ?: ModelSelection.defaultProviders(all, freeCatalog)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    /** Modèles proposés dans le sélecteur. */
+    val models: StateFlow<List<ModelInfo>> = combine(_allModels, enabledProviders) { all, enabled ->
+        ModelSelection.filterEnabled(all, enabled)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Fournisseurs OmniRoute disponibles avec leur nombre de modèles. */
+    val providerCounts: StateFlow<List<Pair<String, Int>>> = _allModels.map { ModelSelection.providerCounts(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _hopliteStatus = MutableStateFlow<String?>(null)
+    val hopliteStatus: StateFlow<String?> = _hopliteStatus.asStateFlow()
 
     val favorites: StateFlow<Set<String>> = settings.config.map { it.favorites }
         .stateIn(viewModelScope, SharingStarted.Eagerly, OmniRouteConfig().favorites)
@@ -87,12 +109,15 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     /** Historique au format OpenAI, y compris appels et résultats d'outils. */
     private var conversation = JsonArray()
     private var autoApprove = false
+    /** Thread Hoplite de la conversation en cours (créé au premier message Hoplite). */
+    private var hopliteThreadId: String? = null
     private var streamJob: Job? = null
     private val prettyGson = GsonBuilder().setPrettyPrinting().create()
 
     init {
         viewModelScope.launch {
-            settings.config.map { Triple(it.normalizedBaseUrl, it.apiKey, it.connectedOnly) }.distinctUntilChanged()
+            settings.config.map { listOf(it.normalizedBaseUrl, it.apiKey, it.connectedOnly, it.hopliteApiKey) }
+                .distinctUntilChanged()
                 .collect { refreshModels() }
         }
         viewModelScope.launch {
@@ -105,22 +130,47 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _loadingModels.value = true
             val config = settings.current()
-            OmniRouteClient(config).listModelInfo(freeCatalog, config.connectedOnly).fold(
-                onSuccess = { list ->
-                    _models.value = list
-                    _error.value = if (list.isEmpty()) {
-                        if (config.connectedOnly) "Aucun modèle couvert par un compte connecté. Connectez un fournisseur " +
-                            "dans l'onglet OmniRoute, ou affichez tous les modèles dans le sélecteur."
-                        else "OmniRoute ne propose aucun modèle : connectez un fournisseur dans l'onglet OmniRoute."
-                    } else null
-                    val chosen = config.model.takeIf { id -> list.any { it.id == id } }
-                        ?: ModelSelection.pickDefault(list)?.id.orEmpty()
-                    _selectedModel.value = chosen
-                    if (chosen != config.model) settings.setModel(chosen)
-                },
-                onFailure = { _error.value = it.message }
+            val omni = async { OmniRouteClient(config).listModelInfo(freeCatalog, config.connectedOnly) }
+            val hoplite = async {
+                if (config.hopliteApiKey.isBlank()) null else HopliteClient(config.hopliteApiKey).listModels()
+            }
+            val omniResult = omni.await()
+            val hopliteResult = hoplite.await()
+
+            _hopliteStatus.value = hopliteResult?.fold(
+                onSuccess = { "Hoplite : ${it.size} modèle(s)" },
+                onFailure = { "Hoplite indisponible : ${it.message}" }
             )
+            val all = omniResult.getOrDefault(emptyList()) + hopliteResult?.getOrNull().orEmpty()
+            _allModels.value = all
+
+            val visible = ModelSelection.filterEnabled(
+                all, config.enabledProviders ?: ModelSelection.defaultProviders(all, freeCatalog)
+            )
+            _error.value = omniResult.exceptionOrNull()?.message ?: if (visible.isEmpty()) {
+                "Aucun modèle affiché : touchez le sélecteur de modèle › Fournisseurs pour en choisir, " +
+                    "ou connectez un fournisseur dans l'onglet OmniRoute."
+            } else null
+            if (all.isNotEmpty()) {
+                val chosen = config.model.takeIf { id -> visible.any { it.id == id } }
+                    ?: ModelSelection.pickDefault(visible)?.id.orEmpty()
+                _selectedModel.value = chosen
+                if (chosen != config.model) settings.setModel(chosen)
+            }
             _loadingModels.value = false
+        }
+    }
+
+    fun toggleProvider(provider: String) {
+        viewModelScope.launch {
+            val current = enabledProviders.value
+            settings.setEnabledProviders(if (provider in current) current - provider else current + provider)
+        }
+    }
+
+    fun setAllProviders(enabled: Boolean) {
+        viewModelScope.launch {
+            settings.setEnabledProviders(if (enabled) providerCounts.value.map { it.first }.toSet() else emptySet())
         }
     }
 
@@ -159,11 +209,11 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun labelFor(modelId: String): ModelLabel {
-        val info = _models.value.firstOrNull { it.id == modelId }
+        val info = _allModels.value.firstOrNull { it.id == modelId }
         return ModelLabel(
             name = info?.displayName ?: modelId,
             provider = info?.provider ?: modelId.substringBefore('/', "?"),
-            free = info?.tier == ModelTier.FREE
+            tier = info?.tier ?: ModelTier.PRO
         )
     }
 
@@ -181,7 +231,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
         streamJob = viewModelScope.launch {
             try {
-                runAgentLoop(model)
+                if (model.startsWith(ModelInfo.HOPLITE_PREFIX)) runHoplite(model, prompt) else runAgentLoop(model)
             } catch (e: CancellationException) {
                 closeDanglingTurn("(interrompu)")
                 throw e
@@ -194,6 +244,72 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
                 _pendingTool.value = null
             }
         }
+    }
+
+    /**
+     * Envoie le message à un agent Hoplite : un thread est créé au premier message puis réutilisé,
+     * et l'état du run est interrogé jusqu'à la réponse finale.
+     */
+    private suspend fun runHoplite(model: String, prompt: String) {
+        val config = settings.current()
+        val client = HopliteClient(config.hopliteApiKey)
+        val upstream = model.removePrefix(ModelInfo.HOPLITE_PREFIX)
+        addUi("assistant", "⏳ Envoi à Hoplite…", labelFor(model))
+
+        val existing = hopliteThreadId
+        val expectedMessageId: String?
+        val threadId: String
+        if (existing == null) {
+            val projectId = config.hopliteProjectId.ifBlank {
+                client.listProjects().getOrThrow().firstOrNull()?.id
+                    ?: throw HopliteException("Aucun projet Hoplite accessible avec cette clé.")
+            }
+            threadId = client.createThread(projectId, prompt, upstream).getOrThrow()
+            hopliteThreadId = threadId
+            expectedMessageId = null
+        } else {
+            threadId = existing
+            expectedMessageId = client.sendMessage(threadId, prompt, upstream).getOrThrow()
+        }
+        val link = "\n\n🔗 ${HopliteClient.threadUrl(threadId)}"
+
+        val deadline = System.currentTimeMillis() + HOPLITE_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            delay(HOPLITE_POLL_MS)
+            val run = client.runState(threadId).getOrThrow()
+            // Tant que le run de notre message n'existe pas, run-state décrit encore le précédent.
+            val ours = run != null && (expectedMessageId == null || run.userMessageId == expectedMessageId)
+            if (!ours) {
+                val info = client.threadInfo(threadId).getOrNull()
+                info?.initializationError?.let { throw HopliteException("Hoplite n'a pas pu démarrer : $it") }
+                updateLastUi("⏳ Hoplite prépare l'environnement… ${info?.initializationPhase?.let { phaseLabel(it) } ?: ""}")
+                continue
+            }
+            when (run!!.status) {
+                "completed" -> {
+                    val answer = run.assistantContent?.takeIf { it.isNotBlank() } ?: "(réponse vide)"
+                    updateLastUi(answer + link)
+                    conversation.add(message("assistant", answer))
+                    return
+                }
+                "failed", "cancelled" -> throw HopliteException(
+                    "Le run Hoplite s'est terminé (${run.status}). Détails : ${HopliteClient.threadUrl(threadId)}"
+                )
+                "waiting" -> updateLastUi(
+                    "⏸ Hoplite attend une action (approbation d'une commande ?). Ouvrez le thread pour répondre.$link"
+                )
+                else -> updateLastUi("⏳ Hoplite travaille… (${run.status})" + (run.assistantContent?.let { "\n\n$it" } ?: ""))
+            }
+        }
+        throw HopliteException("Pas de réponse d'Hoplite après ${HOPLITE_TIMEOUT_MS / 60_000} min. Suivez le thread : ${HopliteClient.threadUrl(threadId)}")
+    }
+
+    private fun phaseLabel(phase: String) = when (phase) {
+        "provisioning_workspace", "allocating_sandbox" -> "(création du sandbox)"
+        "resolving_repository", "fetching_repository" -> "(récupération du dépôt)"
+        "configuring_workspace" -> "(configuration)"
+        "dispatching_run" -> "(démarrage de l'agent)"
+        else -> ""
     }
 
     private suspend fun runAgentLoop(model: String) {
@@ -318,7 +434,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     /** Garde l'historique valide (alternance user/assistant) après une erreur ou un arrêt. */
     private fun closeDanglingTurn(placeholder: String) {
         val last = _messages.value.lastOrNull()
-        if (last?.role == "assistant" && last.content.isEmpty()) updateLastUi(placeholder)
+        if (last?.role == "assistant" && (last.content.isEmpty() || last.content.startsWith("⏳"))) updateLastUi(placeholder)
         val lastRole = conversation.lastOrNull()?.asJsonObject?.get("role")?.asString
         if (lastRole == "user" || lastRole == "tool") conversation.add(message("assistant", placeholder))
     }
@@ -350,12 +466,15 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         stopProcessing()
         _messages.value = emptyList()
         conversation = JsonArray()
+        hopliteThreadId = null
         autoApprove = false
         _error.value = null
     }
 
     companion object {
         private const val MAX_TOOL_ROUNDS = 15
+        private const val HOPLITE_POLL_MS = 3_000L
+        private const val HOPLITE_TIMEOUT_MS = 30 * 60_000L
         private const val UI_OUTPUT_LIMIT = 2_000
         private const val MODEL_OUTPUT_LIMIT = 30_000
         private const val SYSTEM_PROMPT =

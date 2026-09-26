@@ -70,7 +70,11 @@ data class OpenCodeMessage(
     val model: ModelLabel? = null
 )
 
-data class ModelLabel(val name: String, val provider: String, val free: Boolean)
+data class ModelLabel(
+    val name: String,
+    val provider: String,
+    val tier: com.termux.devcenter.data.omniroute.ModelTier
+)
 
 data class LogEntry(
     val level: LogLevel,

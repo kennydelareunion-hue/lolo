@@ -15,12 +15,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termux.devcenter.data.hoplite.HopliteProject
 import com.termux.devcenter.data.omniroute.OmniRouteConfig
 
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
     val omniConfig by viewModel.omniConfig.collectAsState()
     val testResult by viewModel.testResult.collectAsState()
+    val hopliteProjects by viewModel.hopliteProjects.collectAsState()
 
     Column(
         modifier = Modifier
@@ -33,7 +35,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-        omniConfig?.let { ConfigForm(it, testResult, viewModel::saveAndTest) }
+        // La clé change seulement après enregistrement : on garde le même formulaire (et ses saisies).
+        omniConfig?.let { config ->
+            key(config.hopliteProjectId) { ConfigForm(config, testResult, hopliteProjects, viewModel::saveAndTest) }
+        }
     }
 }
 
@@ -41,6 +46,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
 private fun ConfigForm(
     initial: OmniRouteConfig,
     testResult: String?,
+    hopliteProjects: List<HopliteProject>,
     onSaveAndTest: (OmniRouteConfig) -> Unit
 ) {
     var url by remember { mutableStateOf(initial.baseUrl) }
@@ -51,6 +57,10 @@ private fun ConfigForm(
     var mcpEnabled by remember { mutableStateOf(initial.mcpEnabled) }
     var confirm by remember { mutableStateOf(initial.confirmCommands) }
     var mcpCommand by remember { mutableStateOf(initial.mcpStartCommand) }
+    var hopliteKey by remember { mutableStateOf(initial.hopliteApiKey) }
+    var showHopliteKey by remember { mutableStateOf(false) }
+    var hopliteProject by remember { mutableStateOf(initial.hopliteProjectId) }
+    var projectMenu by remember { mutableStateOf(false) }
 
     SettingsSection(title = "OmniRoute") {
         OutlinedTextField(
@@ -118,6 +128,51 @@ private fun ConfigForm(
 
     Spacer(modifier = Modifier.height(16.dp))
 
+    SettingsSection(title = "Hoplite") {
+        OutlinedTextField(
+            value = hopliteKey,
+            onValueChange = { hopliteKey = it },
+            label = { Text("Clé API Hoplite (hop_…)") },
+            supportingText = { Text("hoplite.sh › Settings › Account › API keys. Stockée uniquement sur ce téléphone.") },
+            singleLine = true,
+            visualTransformation = if (showHopliteKey) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { showHopliteKey = !showHopliteKey }) {
+                    Icon(
+                        if (showHopliteKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (showHopliteKey) "Masquer" else "Afficher"
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Box {
+            OutlinedButton(
+                onClick = { projectMenu = true },
+                enabled = hopliteProjects.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Projet : " + (hopliteProjects.firstOrNull { it.id == hopliteProject }?.name
+                        ?: if (hopliteProjects.isEmpty()) "enregistrez la clé pour charger vos projets" else "à choisir")
+                )
+            }
+            DropdownMenu(expanded = projectMenu, onDismissRequest = { projectMenu = false }) {
+                hopliteProjects.forEach { p ->
+                    DropdownMenuItem(text = { Text(p.name) }, onClick = { hopliteProject = p.id; projectMenu = false })
+                }
+            }
+        }
+        Text(
+            "Les conversations avec un modèle Hoplite créent des threads dans ce projet (crédits Hoplite).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
     Button(
         onClick = {
             onSaveAndTest(
@@ -128,7 +183,9 @@ private fun ConfigForm(
                     mcpUrl = mcpUrl.ifBlank { OmniRouteConfig.DEFAULT_MCP_URL },
                     mcpEnabled = mcpEnabled,
                     confirmCommands = confirm,
-                    mcpStartCommand = mcpCommand
+                    mcpStartCommand = mcpCommand,
+                    hopliteApiKey = hopliteKey,
+                    hopliteProjectId = hopliteProject
                 )
             )
         },

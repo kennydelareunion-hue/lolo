@@ -3,6 +3,8 @@ package com.termux.devcenter.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.termux.devcenter.data.hoplite.HopliteClient
+import com.termux.devcenter.data.hoplite.HopliteProject
 import com.termux.devcenter.data.mcp.McpClient
 import com.termux.devcenter.data.omniroute.FreeModelCatalog
 import com.termux.devcenter.data.omniroute.ModelSelection
@@ -22,17 +24,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _omniConfig = MutableStateFlow<OmniRouteConfig?>(null)
     val omniConfig: StateFlow<OmniRouteConfig?> = _omniConfig.asStateFlow()
 
+    private val _hopliteProjects = MutableStateFlow<List<HopliteProject>>(emptyList())
+    val hopliteProjects: StateFlow<List<HopliteProject>> = _hopliteProjects.asStateFlow()
+
     private val _testResult = MutableStateFlow<String?>(null)
     val testResult: StateFlow<String?> = _testResult.asStateFlow()
 
     init {
-        viewModelScope.launch { _omniConfig.value = omniSettings.current() }
+        viewModelScope.launch {
+            val config = omniSettings.current()
+            _omniConfig.value = config
+            if (config.hopliteApiKey.isNotBlank()) {
+                HopliteClient(config.hopliteApiKey).listProjects().onSuccess { _hopliteProjects.value = it }
+            }
+        }
     }
 
     /** Enregistre puis vérifie OmniRoute (liste des modèles) et Omni-Exec (liste des outils). */
     fun saveAndTest(edited: OmniRouteConfig) {
         viewModelScope.launch {
-            val config = edited.copy(model = omniSettings.current().model)
+            var config = edited.copy(model = omniSettings.current().model)
             omniSettings.save(config)
             _omniConfig.value = config
             _testResult.value = "Test en cours…"
@@ -40,6 +51,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 OmniRouteClient(config).listModelInfo(FreeModelCatalog.load(getApplication()), config.connectedOnly)
             }
             val tools = async { if (config.mcpEnabled) McpClient.forUrl(config.mcpUrl).listTools() else null }
+            val hopliteModels = async {
+                if (config.hopliteApiKey.isBlank()) null else HopliteClient(config.hopliteApiKey).listModels()
+            }
+            val hopliteProjects = async {
+                if (config.hopliteApiKey.isBlank()) null else HopliteClient(config.hopliteApiKey).listProjects()
+            }
 
             val omniLine = models.await().fold(
                 onSuccess = { list ->
@@ -54,7 +71,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 onSuccess = { "✓ Omni-Exec : ${it.size} outil(s) — ${it.joinToString { t -> t.name }}" },
                 onFailure = { "✗ ${it.message}" }
             ) ?: "Omni-Exec désactivé"
-            _testResult.value = "$omniLine\n\n$execLine"
+            val projects = hopliteProjects.await()?.getOrNull().orEmpty()
+            _hopliteProjects.value = projects
+            if (projects.isNotEmpty() && projects.none { it.id == config.hopliteProjectId }) {
+                config = config.copy(hopliteProjectId = projects.first().id)
+                omniSettings.save(config)
+                _omniConfig.value = config
+            }
+            val hopliteLine = hopliteModels.await()?.fold(
+                onSuccess = { models ->
+                    val project = projects.firstOrNull { it.id == config.hopliteProjectId }?.name ?: "aucun projet"
+                    "✓ Hoplite : ${models.size} modèle(s) — projet « $project »"
+                },
+                onFailure = { "✗ ${it.message}" }
+            ) ?: "Hoplite : pas de clé API"
+            _testResult.value = "$omniLine\n\n$execLine\n\n$hopliteLine"
         }
     }
 }

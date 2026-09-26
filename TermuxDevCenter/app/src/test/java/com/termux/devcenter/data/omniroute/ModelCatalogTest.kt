@@ -53,10 +53,30 @@ class ModelCatalogTest {
     }
 
     @Test
+    fun `Kiro seul par defaut et fournisseurs sans cle masques`() {
+        val cat = FreeModelCatalog(emptyMap(), setOf("duckduckgo-web"))
+        val models = listOf(
+            ModelInfo("kr/claude-sonnet-4.5", "kiro", "claude-sonnet-4.5", ModelTier.FREE),
+            ModelInfo("ddgw/gpt", "duckduckgo-web", "gpt", ModelTier.FREE),
+            ModelInfo("groq/llama", "groq", "llama", ModelTier.FREE),
+            ModelInfo("auto/best", "combo", "auto/best", ModelTier.COMBO),
+            ModelInfo("hoplite:claude-sonnet-5", "hoplite", "claude-sonnet-5", ModelTier.HOPLITE, "Sonnet 5")
+        )
+        assertEquals(setOf("kiro"), ModelSelection.defaultProviders(models, cat))
+        assertEquals(setOf("groq"), ModelSelection.defaultProviders(models.drop(1), cat))
+        assertEquals(
+            listOf("kr/claude-sonnet-4.5", "hoplite:claude-sonnet-5"),
+            ModelSelection.filterEnabled(models, setOf("kiro")).map { it.id }
+        )
+        assertEquals(listOf("combo" to 1, "duckduckgo-web" to 1, "groq" to 1, "kiro" to 1), ModelSelection.providerCounts(models))
+    }
+
+    @Test
     fun `le catalogue embarque reconnait Kiro`() {
         val file = File("src/main/assets/free_models.json")
         val embedded = FreeModelCatalog.parse(file.readText())
         assertTrue(embedded.isFree("kiro", "claude-sonnet-4.5", "kr/claude-sonnet-4.5"))
+        assertTrue("duckduckgo-web" in embedded.noAuthProviders)
     }
 
     @Test

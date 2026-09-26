@@ -40,6 +40,9 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
     var modelPickerOpen by remember { mutableStateOf(false) }
     val favorites by viewModel.favorites.collectAsState()
     val connectedOnly by viewModel.connectedOnly.collectAsState()
+    val providerCounts by viewModel.providerCounts.collectAsState()
+    val enabledProviders by viewModel.enabledProviders.collectAsState()
+    val hopliteStatus by viewModel.hopliteStatus.collectAsState()
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
@@ -55,6 +58,10 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
             favorites = favorites,
             connectedOnly = connectedOnly,
             onConnectedOnlyChange = viewModel::setConnectedOnly,
+            providerCounts = providerCounts,
+            enabledProviders = enabledProviders,
+            onToggleProvider = viewModel::toggleProvider,
+            onSetAllProviders = viewModel::setAllProviders,
             onToggleFavorite = viewModel::toggleFavorite,
             onSelect = viewModel::selectModel,
             onDismiss = { modelPickerOpen = false }
@@ -136,6 +143,17 @@ fun OpenCodeScreen(viewModel: OpenCodeViewModel = viewModel()) {
             ),
             modifier = Modifier.fillMaxWidth()
         )
+
+        if (models.firstOrNull { it.id == selectedModel }?.isHoplite == true) {
+            Text(
+                "Agent Hoplite : réponse en quelques minutes, dans un thread de votre projet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = HopliteColor
+            )
+        }
+        hopliteStatus?.takeIf { it.startsWith("Hoplite indisponible") }?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
 
         error?.let {
             Card(
@@ -247,7 +265,7 @@ fun MessageBubble(message: OpenCodeMessage) {
                     )
                     message.model?.let {
                         Spacer(Modifier.width(6.dp))
-                        TierBadge(if (it.free) com.termux.devcenter.data.omniroute.ModelTier.FREE else com.termux.devcenter.data.omniroute.ModelTier.PRO)
+                        TierBadge(it.tier)
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))

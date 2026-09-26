@@ -1,6 +1,8 @@
 package com.termux.devcenter.ui.opencode
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +28,7 @@ import com.termux.devcenter.data.omniroute.ModelTier
 val FreeColor = Color(0xFF2E7D32)
 val ProColor = Color(0xFF7B1FA2)
 val ComboColor = Color(0xFF546E7A)
+val HopliteColor = Color(0xFF00897B)
 
 @Composable
 fun TierBadge(tier: ModelTier) {
@@ -33,6 +36,7 @@ fun TierBadge(tier: ModelTier) {
         ModelTier.FREE -> "GRATUIT" to FreeColor
         ModelTier.PRO -> "PRO" to ProColor
         ModelTier.COMBO -> "COMBO" to ComboColor
+        ModelTier.HOPLITE -> "HOPLITE" to HopliteColor
     }
     Surface(color = color, shape = MaterialTheme.shapes.small) {
         Text(
@@ -44,7 +48,9 @@ fun TierBadge(tier: ModelTier) {
     }
 }
 
-private enum class PickerTab(val title: String) { FAVORITES("★ Favoris"), PRO("Pro"), FREE("Gratuit"), ALL("Tous") }
+private enum class PickerTab(val title: String) {
+    FAVORITES("★ Favoris"), PRO("Pro"), FREE("Gratuit"), HOPLITE("Hoplite"), ALL("Tous")
+}
 
 @Composable
 fun ModelPickerDialog(
@@ -53,6 +59,10 @@ fun ModelPickerDialog(
     favorites: Set<String>,
     connectedOnly: Boolean,
     onConnectedOnlyChange: (Boolean) -> Unit,
+    providerCounts: List<Pair<String, Int>>,
+    enabledProviders: Set<String>,
+    onToggleProvider: (String) -> Unit,
+    onSetAllProviders: (Boolean) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
@@ -60,11 +70,13 @@ fun ModelPickerDialog(
     val favoriteModels = remember(models, favorites) { models.filter { it.id in favorites } }
     var tab by remember { mutableStateOf(if (favoriteModels.isNotEmpty()) PickerTab.FAVORITES else PickerTab.PRO) }
     var query by remember { mutableStateOf("") }
+    var providersOpen by remember { mutableStateOf(false) }
 
     val source = when (tab) {
         PickerTab.FAVORITES -> favoriteModels
         PickerTab.PRO -> models.filter { it.tier == ModelTier.PRO }
         PickerTab.FREE -> models.filter { it.tier == ModelTier.FREE }
+        PickerTab.HOPLITE -> models.filter { it.isHoplite }
         PickerTab.ALL -> models
     }
     val groups = remember(source, query) { ModelSelection.groupByProvider(ModelSelection.search(source, query)) }
@@ -91,10 +103,20 @@ fun ModelPickerDialog(
                             PickerTab.FAVORITES -> favoriteModels.size
                             PickerTab.PRO -> models.count { it.tier == ModelTier.PRO }
                             PickerTab.FREE -> models.count { it.tier == ModelTier.FREE }
+                            PickerTab.HOPLITE -> models.count { it.isHoplite }
                             PickerTab.ALL -> models.size
                         }
                         Tab(selected = tab == t, onClick = { tab = t }, text = { Text("${t.title} ($count)") })
                     }
+                }
+                OutlinedButton(onClick = { providersOpen = !providersOpen }, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Fournisseurs affichés : ${enabledProviders.count { p -> providerCounts.any { it.first == p } }}" +
+                            "/${providerCounts.size} ${if (providersOpen) "▲" else "▼"}"
+                    )
+                }
+                if (providersOpen) {
+                    ProviderFilter(providerCounts, enabledProviders, onToggleProvider, onSetAllProviders)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -103,6 +125,14 @@ fun ModelPickerDialog(
                         modifier = Modifier.weight(1f)
                     )
                     Switch(checked = connectedOnly, onCheckedChange = onConnectedOnlyChange)
+                }
+                if (tab == PickerTab.HOPLITE) {
+                    Text(
+                        if (models.none { it.isHoplite }) "Ajoutez votre clé API Hoplite dans Réglages pour voir ces modèles."
+                        else "Chaque conversation Hoplite crée un thread (agent + sandbox) qui consomme vos crédits Hoplite.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 if (tab == PickerTab.FREE) {
                     Text(
@@ -115,8 +145,11 @@ fun ModelPickerDialog(
                     if (groups.isEmpty()) {
                         item {
                             Text(
-                                if (tab == PickerTab.FAVORITES) "Aucun favori : touchez ☆ à côté d'un modèle."
-                                else "Aucun modèle.",
+                                when (tab) {
+                                    PickerTab.FAVORITES -> "Aucun favori : touchez ☆ à côté d'un modèle."
+                                    PickerTab.HOPLITE -> "Aucun modèle Hoplite."
+                                    else -> "Aucun modèle : activez des fournisseurs ci-dessus."
+                                },
                                 modifier = Modifier.padding(16.dp)
                             )
                         }
@@ -143,6 +176,36 @@ fun ModelPickerDialog(
                     }
                 }
                 TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Fermer") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProviderFilter(
+    providerCounts: List<Pair<String, Int>>,
+    enabled: Set<String>,
+    onToggle: (String) -> Unit,
+    onSetAll: (Boolean) -> Unit
+) {
+    Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+        Text(
+            "Cochez uniquement les fournisseurs que vous avez connectés (ex. kiro).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row {
+            TextButton(onClick = { onSetAll(true) }) { Text("Tout") }
+            TextButton(onClick = { onSetAll(false) }) { Text("Aucun") }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            providerCounts.forEach { (provider, count) ->
+                FilterChip(
+                    selected = provider in enabled,
+                    onClick = { onToggle(provider) },
+                    label = { Text("$provider ($count)") }
+                )
             }
         }
     }
