@@ -44,3 +44,5 @@ Chaque commande demandée par Claude affiche une fenêtre **Exécuter / Refuser 
 | Aucun modèle disponible | Aucun fournisseur connecté dans l'onglet OmniRoute |
 | Impossible de joindre Omni-Exec | Démarrez-le ; journal : `~/.termux-dev-center/omni-exec.log` |
 | Omni-Exec a répondu 404 / réponse inattendue | Mauvais chemin : corrigez l'URL MCP (étape 3.2) |
+| Omni-Exec a répondu 400 : Missing sessionId | Corrigé en 1.3.0 (transport SSE détecté automatiquement) : mettez l'app à jour |
+| Journal Omni-Exec : EADDRINUSE | Omni-Exec tourne déjà, rien à faire. Pour le relancer : `pkill -f http-server.js` puis Démarrer |

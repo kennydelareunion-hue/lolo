@@ -64,6 +64,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun refreshStatus() {
+        _startMessage.value = null
         viewModelScope.launch { checkServersStatus() }
     }
 
@@ -80,10 +81,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
         viewModelScope.launch {
             val config = omniSettings.current()
-            val (label, result) = when (service) {
-                Service.OMNIROUTE -> "OmniRoute" to
+            val label = if (service == Service.OMNIROUTE) "OmniRoute" else "Omni-Exec"
+            // Évite de lancer une seconde instance qui échouerait sur « EADDRINUSE ».
+            checkServersStatus()
+            if (_serverStatus.value.isUp(service)) {
+                _startMessage.value = "$label tourne déjà."
+                return@launch
+            }
+            val result = when (service) {
+                Service.OMNIROUTE ->
                     TermuxLauncher.startDetached(app, config.startCommand, TermuxLauncher.OMNIROUTE_LOG)
-                Service.OMNI_EXEC -> "Omni-Exec" to
+                Service.OMNI_EXEC ->
                     TermuxLauncher.startDetached(app, config.mcpStartCommand, TermuxLauncher.OMNI_EXEC_LOG)
             }
             val log = if (service == Service.OMNIROUTE) TermuxLauncher.OMNIROUTE_LOG else TermuxLauncher.OMNI_EXEC_LOG
