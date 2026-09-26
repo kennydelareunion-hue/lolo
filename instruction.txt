@@ -1,0 +1,380 @@
+Tu es maintenant responsable de développer entièrement une application Android native depuis mon environnement Termux.
+
+OBJECTIF PRINCIPAL
+
+Je veux créer une application Android qui me permette de piloter mon environnement OpenCode actuellement installé dans Termux, depuis une interface graphique Android native.
+
+Je ne veux PAS remplacer OpenCode, OmniRoute, Omniroot, Kiro ou Claude.
+
+Je veux construire une interface Android au-dessus de mon installation existante.
+
+Architecture actuelle à conserver :
+
+Android
+→ Termux
+→ OpenCode
+→ OmniRoute / Omniroot
+→ fournisseur Kiro
+→ Claude Sonnet 4.5
+
+L'application Android doit devenir mon interface principale pour travailler avec OpenCode, sans avoir besoin de taper constamment les commandes dans le terminal.
+
+IMPORTANT
+
+AVANT DE CODER :
+
+1. Inspecte complètement mon environnement actuel.
+2. Vérifie où OpenCode est installé.
+3. Vérifie sa version.
+4. Vérifie comment OpenCode est actuellement lancé.
+5. Vérifie si "opencode serve" est disponible dans ma version.
+6. Inspecte ma configuration OpenCode actuelle.
+7. Identifie précisément l'API/serveur OpenCode disponible dans ma version.
+8. Vérifie comment communiquer avec OpenCode depuis une autre application Android.
+9. Vérifie les ports actuellement utilisés.
+10. Vérifie mon installation Java, Gradle et Android SDK.
+11. Vérifie où se trouvent mes projets dans mon HOME Termux.
+12. Vérifie les permissions Android nécessaires.
+13. Ne détruis, ne remplace et ne désactive aucune configuration existante.
+
+Ne fais aucune supposition concernant les API OpenCode : inspecte réellement l'installation et utilise les interfaces disponibles dans ma version.
+
+APPLICATION À CONSTRUIRE
+
+Crée un véritable APK Android natif.
+
+Nom de l'application :
+
+Termux Dev Center
+
+L'application doit être conçue pour mon téléphone Android et fonctionner localement sur celui-ci.
+
+Je veux une interface moderne, simple et rapide.
+
+ÉCRAN PRINCIPAL
+
+Créer un tableau de bord avec :
+
+- OpenCode
+- Projets
+- Fichiers
+- Terminal
+- Compilation APK
+- Sessions
+- Paramètres
+
+Afficher également l'état :
+
+OpenCode :
+● connecté / ● déconnecté
+
+Serveur :
+● actif / ● arrêté
+
+INTERFACE OPENCODE
+
+Je veux pouvoir utiliser OpenCode depuis l'APK.
+
+L'écran doit permettre :
+
+- voir les sessions ;
+- créer une nouvelle session ;
+- sélectionner un projet ;
+- envoyer un prompt à Claude ;
+- afficher les réponses ;
+- afficher les actions effectuées ;
+- afficher les commandes exécutées ;
+- afficher les erreurs ;
+- suivre l'avancement en temps réel lorsque possible ;
+- interrompre une opération ;
+- reprendre une session existante.
+
+L'interface doit ressembler à un véritable client de développement, pas simplement à une page web encapsulée dans une WebView.
+
+EXPLORATEUR DE FICHIERS
+
+Je veux pouvoir parcourir mon environnement de développement.
+
+Commencer par mon HOME Termux.
+
+Pouvoir :
+
+- naviguer dans les dossiers ;
+- ouvrir les fichiers texte ;
+- modifier les fichiers ;
+- créer un fichier ;
+- créer un dossier ;
+- renommer ;
+- supprimer ;
+- copier ;
+- couper ;
+- coller ;
+- sélectionner plusieurs fichiers ;
+- importer un fichier depuis le stockage Android ;
+- exporter/copier un fichier vers Downloads.
+
+L'application doit afficher clairement le chemin courant.
+
+Exemple :
+
+/data/data/com.termux/files/home/
+
+Puis :
+
+~/CameraRemote
+~/CalorIA
+~/OmniPanel
+~/V1
+~/V2
+etc.
+
+Ne suppose pas que l'application Android possède directement accès à ces chemins.
+
+Si Android ne peut pas accéder directement aux fichiers internes de Termux, crée une solution propre via un petit service/bridge local dans Termux.
+
+BRIDGE TERMUX
+
+Si nécessaire, crée un petit serveur local dédié permettant à l'APK de communiquer avec Termux.
+
+Il doit permettre au minimum :
+
+- liste des fichiers ;
+- lecture ;
+- écriture ;
+- création ;
+- déplacement ;
+- copie ;
+- suppression ;
+- création de dossiers ;
+- exécution de commandes explicitement demandées par l'application.
+
+Le bridge doit écouter uniquement en local.
+
+Utiliser localhost / 127.0.0.1 lorsque possible.
+
+Ne pas exposer inutilement le serveur sur Internet.
+
+Sécuriser les requêtes entre l'APK et le bridge.
+
+TERMINAL
+
+Ajouter un terminal intégré optionnel dans l'application.
+
+Il doit permettre de voir/exécuter les commandes dans le contexte Termux lorsque c'est techniquement possible.
+
+Je veux notamment pouvoir faire depuis l'APK :
+
+pwd
+ls
+cd
+git
+gradle
+npm
+python
+etc.
+
+Mais l'application doit également conserver un affichage graphique des commandes et de leurs sorties.
+
+COMPILATION APK
+
+Ajouter une fonction :
+
+"Compiler le projet"
+
+Elle doit pouvoir :
+
+1. sélectionner un projet ;
+2. détecter automatiquement sa configuration Gradle ;
+3. lancer la compilation dans Termux ;
+4. afficher la sortie Gradle en temps réel ;
+5. détecter les erreurs ;
+6. afficher clairement l'échec ou la réussite ;
+7. localiser automatiquement l'APK généré ;
+8. proposer :
+   - Installer
+   - Ouvrir le dossier
+   - Partager
+   - Copier vers Downloads.
+
+Utiliser l'environnement Gradle/Java/Android SDK déjà installé sur mon téléphone.
+
+Ne réinstalle pas inutilement les outils déjà présents.
+
+IMPORTATION DE FICHIERS
+
+Je veux pouvoir sélectionner un fichier Android depuis l'application et l'envoyer directement dans un projet Termux.
+
+Exemple :
+
+Android Downloads
+→ sélectionner fichier
+→ choisir projet
+→ choisir dossier
+→ copier.
+
+Je veux également pouvoir sélectionner plusieurs fichiers.
+
+SESSIONS
+
+Créer une section permettant de voir les sessions OpenCode.
+
+Pour chaque session afficher :
+
+- projet ;
+- date ;
+- dernier message ;
+- état ;
+- bouton reprendre.
+
+LOGS
+
+Créer un écran de logs permettant de voir :
+
+- connexion OpenCode ;
+- connexion bridge ;
+- commandes ;
+- compilation ;
+- erreurs ;
+- événements importants.
+
+Ajouter un bouton pour vider les logs.
+
+PARAMÈTRES
+
+Ajouter :
+
+- adresse du serveur OpenCode ;
+- port ;
+- adresse du bridge Termux ;
+- port du bridge ;
+- test de connexion ;
+- reconnexion ;
+- thème clair/sombre ;
+- niveau de logs.
+
+Les valeurs doivent être configurables et non codées en dur lorsque cela n'est pas nécessaire.
+
+ARCHITECTURE TECHNIQUE
+
+Avant de choisir les bibliothèques, inspecte ce qui est déjà installé dans mon environnement.
+
+Utilise une architecture Android native propre.
+
+Tu peux utiliser Kotlin si cela simplifie le développement, mais adapte-toi à mon environnement Gradle/Android SDK réellement disponible.
+
+Ne crée pas de dépendances inutiles.
+
+L'application doit pouvoir être compilée directement depuis mon Termux.
+
+RÈGLE IMPORTANTE : NE PAS CASSER MON ENVIRONNEMENT
+
+Tu travailles directement dans mon Termux.
+
+Avant toute modification importante :
+
+- inspecte ;
+- sauvegarde si nécessaire ;
+- explique brièvement ce que tu vas modifier ;
+- conserve les configurations existantes.
+
+Ne supprime jamais :
+
+~/.config/opencode/
+
+ni mes projets existants.
+
+Ne modifie pas ma configuration OmniRoute/Omniroot/Kiro sauf si cela est absolument nécessaire et après avoir vérifié précisément son fonctionnement.
+
+MÉTHODE DE TRAVAIL
+
+Travaille de manière autonome.
+
+Commence par :
+
+PHASE 1 — AUDIT
+
+Inspecte mon environnement et donne-moi un résumé de ce que tu as trouvé.
+
+PHASE 2 — ARCHITECTURE
+
+Détermine l'architecture exacte de l'application.
+
+PHASE 3 — PROJET
+
+Crée le projet Android.
+
+PHASE 4 — IMPLÉMENTATION
+
+Implémente progressivement :
+
+1. dashboard ;
+2. connexion OpenCode ;
+3. sessions ;
+4. chat/prompt ;
+5. explorateur de fichiers ;
+6. bridge Termux ;
+7. terminal ;
+8. compilation ;
+9. logs ;
+10. paramètres.
+
+PHASE 5 — TESTS
+
+Teste chaque fonctionnalité.
+
+Ne te contente pas de vérifier que le code compile.
+
+Teste réellement les communications avec les services locaux.
+
+PHASE 6 — COMPILATION
+
+Compile l'APK debug.
+
+Corrige automatiquement les erreurs de compilation.
+
+PHASE 7 — LIVRABLE
+
+À la fin, donne-moi :
+
+- emplacement du projet ;
+- emplacement exact de l'APK ;
+- commande utilisée pour compiler ;
+- commande permettant de relancer les services nécessaires ;
+- résumé des fonctionnalités ;
+- problèmes éventuels restant à résoudre.
+
+Copie également automatiquement l'APK final dans :
+
+~/storage/downloads/
+
+avec un nom clair, par exemple :
+
+TermuxDevCenter-v1.apk
+
+RÈGLE FONDAMENTALE
+
+Ne me demande pas de copier manuellement des morceaux de code entre plusieurs fichiers si tu peux modifier directement les fichiers toi-même.
+
+Tu as accès au terminal.
+
+Utilise directement les commandes nécessaires.
+
+Si tu dois créer ou remplacer un fichier, fais-le directement.
+
+Si une information manque, inspecte le système avant de me poser une question.
+
+Si une fonctionnalité est impossible telle quelle à cause des restrictions Android, ne simule pas son fonctionnement.
+
+Explique précisément la limitation et implémente la meilleure architecture réellement fonctionnelle.
+
+OBJECTIF FINAL :
+
+Je veux pouvoir ouvrir "Termux Dev Center" sur mon téléphone et avoir une expérience proche de :
+
+OpenCode + explorateur de fichiers + terminal + compilation Android
+
+dans une seule application graphique Android, tout en conservant OpenCode, OmniRoute/Omniroot, Kiro et Claude Sonnet 4.5 comme backend existant.
+
+Commence maintenant par la PHASE 1 : AUDIT COMPLET DE MON ENVIRONNEMENT.
+
+Ne commence pas à coder avant d'avoir terminé l'audit.

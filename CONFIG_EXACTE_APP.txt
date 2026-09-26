@@ -1,0 +1,66 @@
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║   CONFIGURATION EXACTE - 26 SEPT 2026 - 00:01            ║
+║   D'APRÈS LE CODE SOURCE DE L'APPLICATION                 ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+
+📱 DANS L'APPLICATION - VALEURS EXACTES À ENTRER :
+
+┌────────────────────────────────────────────────────────┐
+│                                                        │
+│  SERVEUR OPENCODE:                                     │
+│  ├─ Adresse:  127.0.0.1                               │
+│  └─ Port:     20128                                    │
+│                                                        │
+│  BRIDGE TERMUX:                                        │
+│  ├─ Adresse:  127.0.0.1                               │
+│  └─ Port:     8080                                     │
+│                                                        │
+│  OMNI-EXEC MCP:                                        │
+│  ├─ Adresse:  127.0.0.1                               │
+│  └─ Port:     20128                                    │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+
+⚠️  IMPORTANT: L'app a Port=0 par défaut pour OpenCode
+    → Vous DEVEZ changer à 20128 !
+
+═══════════════════════════════════════════════════════════
+
+✅ VÉRIFICATION DES SERVICES (00:01):
+
+Service          | Adresse      | Port  | Status
+─────────────────┼──────────────┼───────┼────────
+OpenCode (AI)    | 127.0.0.1    | 20128 | ✅ Actif
+Bridge           | 127.0.0.1    | 8080  | ✅ Actif
+Omni-Exec        | 127.0.0.1    | 20128 | ✅ Actif
+
+═══════════════════════════════════════════════════════════
+
+🎯 ÉTAPES DANS L'APP (MAINTENANT):
+
+1. Ouvrez Paramètres ⚙️
+
+2. Section "Serveur OpenCode":
+   - Adresse: 127.0.0.1
+   - Port: 20128   ← IMPORTANT! Changer de 0 à 20128
+
+3. Section "Bridge Termux":
+   - Adresse: 127.0.0.1
+   - Port: 8080   ← Déjà bon par défaut
+
+4. Section "Omni-Exec MCP":
+   - Adresse: 127.0.0.1
+   - Port: 20128   ← Changer de 20129 à 20128
+
+5. Tapez "Tester la connexion"
+
+6. Tapez "Reconnecter"
+
+═══════════════════════════════════════════════════════════
+
+Date: 26 Septembre 2026 - 00:01
+Tous les services sont ACTIFS sur les bons ports
+
+╚════════════════════════════════════════════════════════════╝

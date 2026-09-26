@@ -1,0 +1,78 @@
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║     CONNEXION TERMUXDEVCENTER - GUIDE ULTRA-SIMPLE        ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+
+✅ LE SERVEUR EST ACTIF ET PRÊT !
+
+═══════════════════════════════════════════════════════════
+
+📱 DANS L'APPLICATION TERMUXDEVCENTER :
+
+1. Ouvrez l'application
+2. Allez dans "Paramètres" ou "Settings"
+3. Trouvez le champ "Serveur" ou "Bridge URL"
+4. Entrez EXACTEMENT :
+
+   ┌──────────────────────────────────┐
+   │  http://127.0.0.1:8080          │
+   └──────────────────────────────────┘
+
+5. Appuyez sur "Tester" ou "Sauvegarder"
+
+═══════════════════════════════════════════════════════════
+
+🔧 SI L'APP DEMANDE DES CHAMPS SÉPARÉS :
+
+   IP/Host :  127.0.0.1
+   Port    :  8080
+   
+   OU
+   
+   IP/Host :  localhost
+   Port    :  8080
+
+═══════════════════════════════════════════════════════════
+
+✅ VÉRIFICATION :
+
+Le serveur répond actuellement :
+- Sur http://127.0.0.1:8080 ✓
+- Sur http://localhost:8080 ✓
+
+Les 3 services sont connectés :
+✓ Bridge (Port 8080)
+✓ OmniRoute (IA)
+✓ Omni-Exec (Commandes)
+
+═══════════════════════════════════════════════════════════
+
+🎯 RÉSUMÉ EN 1 LIGNE :
+
+Dans Paramètres app → Entrer : http://127.0.0.1:8080
+
+═══════════════════════════════════════════════════════════
+
+📋 SI ÇA NE MARCHE TOUJOURS PAS :
+
+Essayez ces URLs dans cet ordre :
+
+1. http://127.0.0.1:8080
+2. http://localhost:8080  
+3. http://10.0.2.2:8080   (si c'est un émulateur)
+
+═══════════════════════════════════════════════════════════
+
+🔍 POUR VÉRIFIER DEPUIS TERMUX :
+
+curl http://127.0.0.1:8080/health
+
+Doit retourner : {"status":"ok",...}
+
+═══════════════════════════════════════════════════════════
+
+Date: 25 Sept 2026 - 23:53
+Status: ✅ TOUS LES SERVICES ACTIFS ET PRÊTS
+
+╚════════════════════════════════════════════════════════════╝

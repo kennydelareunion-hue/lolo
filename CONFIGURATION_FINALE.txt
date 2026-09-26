@@ -1,0 +1,54 @@
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║   CONFIGURATION FINALE - 25 SEPT 2026 - 23:59            ║
+║   TERMUXDEVCENTER - TOUTES LES URLS                       ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+
+📱 DANS L'APPLICATION - PARAMÈTRES :
+
+Entrez ces 3 URLs EXACTEMENT :
+
+┌────────────────────────────────────────────────────────┐
+│                                                        │
+│  1️⃣  BRIDGE (Files + Terminal)                        │
+│      http://127.0.0.1:8080                            │
+│                                                        │
+│  2️⃣  OMNIROUTE (OpenCode/Kiro/IA)                     │
+│      http://localhost:20128                           │
+│                                                        │
+│  3️⃣  OMNI-EXEC (Commandes)                            │
+│      http://127.0.0.1:8080                            │
+│      (ou via Bridge)                                  │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════
+
+✅ RÉCAPITULATIF :
+
+Service          | URL                      | Port
+─────────────────┼──────────────────────────┼──────
+Bridge           | http://127.0.0.1:8080    | 8080
+OmniRoute (Kiro) | http://localhost:20128   | 20128
+Omni-Exec        | http://127.0.0.1:8080    | 8080
+
+═══════════════════════════════════════════════════════════
+
+🎯 CONFIGURATION PAR ONGLET DE L'APP :
+
+📁 FILES (Gestionnaire fichiers)
+   → Bridge: http://127.0.0.1:8080
+
+💻 TERMINAL (Commandes)
+   → Bridge/Omni-Exec: http://127.0.0.1:8080
+
+🤖 OPENCODE (IA Kiro)
+   → OmniRoute: http://localhost:20128
+
+═══════════════════════════════════════════════════════════
+
+Date: 25 Septembre 2026 - 23:59
+Tous les services sont ACTIFS
+
+╚════════════════════════════════════════════════════════════╝

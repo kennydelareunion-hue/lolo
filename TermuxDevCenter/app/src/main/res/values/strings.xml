@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Termux Dev Center</string>
+    
+    <!-- Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_opencode">OpenCode</string>
+    <string name="nav_projects">Projets</string>
+    <string name="nav_files">Fichiers</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_build">Compilation</string>
+    <string name="nav_sessions">Sessions</string>
+    <string name="nav_settings">Paramètres</string>
+    
+    <!-- Dashboard -->
+    <string name="dashboard_title">Termux Dev Center</string>
+    <string name="status_opencode">OpenCode</string>
+    <string name="status_server">Serveur</string>
+    <string name="status_connected">Connecté</string>
+    <string name="status_disconnected">Déconnecté</string>
+    <string name="status_active">Actif</string>
+    <string name="status_stopped">Arrêté</string>
+    
+    <!-- OpenCode -->
+    <string name="opencode_title">Interface OpenCode</string>
+    <string name="opencode_new_session">Nouvelle session</string>
+    <string name="opencode_send_prompt">Envoyer un prompt</string>
+    <string name="opencode_prompt_hint">Entrez votre prompt…</string>
+    <string name="opencode_select_project">Sélectionner un projet</string>
+    <string name="opencode_sessions">Sessions</string>
+    <string name="opencode_resume">Reprendre</string>
+    <string name="opencode_stop">Interrompre</string>
+    
+    <!-- Files -->
+    <string name="files_title">Explorateur de fichiers</string>
+    <string name="files_current_path">Chemin actuel</string>
+    <string name="files_create_file">Créer un fichier</string>
+    <string name="files_create_folder">Créer un dossier</string>
+    <string name="files_delete">Supprimer</string>
+    <string name="files_rename">Renommer</string>
+    <string name="files_copy">Copier</string>
+    <string name="files_paste">Coller</string>
+    <string name="files_import">Importer</string>
+    <string name="files_export">Exporter vers Downloads</string>
+    
+    <!-- Terminal -->
+    <string name="terminal_title">Terminal</string>
+    <string name="terminal_command_hint">Entrez une commande…</string>
+    <string name="terminal_run">Exécuter</string>
+    <string name="terminal_clear">Effacer</string>
+    
+    <!-- Build -->
+    <string name="build_title">Compilation APK</string>
+    <string name="build_select_project">Sélectionner un projet</string>
+    <string name="build_start">Lancer la compilation</string>
+    <string name="build_in_progress">Compilation en cours…</string>
+    <string name="build_success">Compilation réussie !</string>
+    <string name="build_failed">Compilation échouée</string>
+    <string name="build_install">Installer</string>
+    <string name="build_open_folder">Ouvrir le dossier</string>
+    <string name="build_share">Partager</string>
+    <string name="build_copy_downloads">Copier vers Downloads</string>
+    
+    <!-- Sessions -->
+    <string name="sessions_title">Sessions OpenCode</string>
+    <string name="sessions_project">Projet</string>
+    <string name="sessions_date">Date</string>
+    <string name="sessions_last_message">Dernier message</string>
+    <string name="sessions_status">État</string>
+    <string name="sessions_resume">Reprendre</string>
+    
+    <!-- Logs -->
+    <string name="logs_title">Logs</string>
+    <string name="logs_clear">Vider les logs</string>
+    <string name="logs_level">Niveau</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">Paramètres</string>
+    <string name="settings_opencode_server">Serveur OpenCode</string>
+    <string name="settings_opencode_address">Adresse</string>
+    <string name="settings_opencode_port">Port</string>
+    <string name="settings_bridge_server">Bridge Termux</string>
+    <string name="settings_bridge_address">Adresse Bridge</string>
+    <string name="settings_bridge_port">Port Bridge</string>
+    <string name="settings_omni_exec">Omni-Exec MCP</string>
+    <string name="settings_omni_exec_address">Adresse Omni-Exec</string>
+    <string name="settings_omni_exec_port">Port Omni-Exec</string>
+    <string name="settings_test_connection">Tester la connexion</string>
+    <string name="settings_reconnect">Reconnecter</string>
+    <string name="settings_theme">Thème</string>
+    <string name="settings_theme_light">Clair</string>
+    <string name="settings_theme_dark">Sombre</string>
+    <string name="settings_theme_system">Système</string>
+    <string name="settings_log_level">Niveau de logs</string>
+    
+    <!-- Common -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Annuler</string>
+    <string name="common_save">Enregistrer</string>
+    <string name="common_delete">Supprimer</string>
+    <string name="common_confirm">Confirmer</string>
+    <string name="common_error">Erreur</string>
+    <string name="common_success">Succès</string>
+    <string name="common_loading">Chargement…</string>
+    <string name="common_retry">Réessayer</string>
+    
+    <!-- Errors -->
+    <string name="error_connection_failed">Échec de la connexion</string>
+    <string name="error_network">Erreur réseau</string>
+    <string name="error_server_unavailable">Serveur indisponible</string>
+    <string name="error_invalid_input">Entrée invalide</string>
+    <string name="error_file_not_found">Fichier introuvable</string>
+    <string name="error_permission_denied">Permission refusée</string>
+</resources>
